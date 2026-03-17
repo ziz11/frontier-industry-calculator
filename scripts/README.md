@@ -5,8 +5,9 @@ This folder will contain helper scripts for:
 - generating `calculator_graph.json`
 - validating graph files against the schema
 - producing demo fixtures for the web app
+- building optional local icon ZIPs
 
-For now the data still comes from the parent repository split pipeline in `data_toolset/`.
+For now the data still comes from the parent repository split pipeline in `data_toolset/`, plus browser-side uploads for graph, stripped folder, and icon ZIP inputs.
 
 ## Available Script
 

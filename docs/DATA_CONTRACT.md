@@ -19,6 +19,14 @@ Fallback runtime input:
 
 This mode exists so the app can still work without a pre-generated graph file.
 
+### 3. Local Icon ZIP
+
+Optional enrichment input:
+
+- `item_icons.zip`
+
+The calculator can use this for local item artwork without depending on an external service.
+
 ## Why Graph JSON
 
 The calculator needs recursive traversal and rollups.
@@ -95,7 +103,7 @@ Keyed by `typeID`.
 
 ### `baseMaterials`
 
-List of type IDs treated as leaf materials for full rollup.
+List of type IDs treated as leaf materials for full rollup and raw-material planning.
 
 ```json
 [88510, 88511, 88512]
@@ -108,5 +116,16 @@ For the first implementation, `baseMaterials` are derived by a simple rule:
 - the item appears in recipe inputs
 - the item does not appear as an output of any known recipe
 
-This is enough for the first tree and rollup implementation.
-If later we need stricter ore classification, we can add explicit flags or a separate mapping layer.
+This is enough for the first tree, rollup, and mining-list implementation.
+If later we need stricter ore classification or byproduct-aware planning, we can add explicit flags or a separate mapping layer.
+
+## UI-Level Expectations
+
+The loaded data should support:
+
+- alternate recipes for the same output type
+- exact `typeID` lookup
+- category/group browsing
+- raw-material and component rollups
+- local progress persistence
+- optional icon resolution from a ZIP file

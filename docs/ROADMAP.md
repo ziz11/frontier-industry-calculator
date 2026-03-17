@@ -1,31 +1,30 @@
 # Roadmap
 
-## Phase 1
+## Current V1
 
-- define `calculator_graph.json`
-- generate graph from split stripped data
-- build static HTML shell
-- support graph upload
-- implement item search
-- implement recipe summary
+- `calculator_graph.json` loading
+- stripped folder loading in-browser
+- optional `item_icons.zip` loading
+- craftable item search
+- exact `typeID` search
+- category/group filtering
+- quantity-driven planning
+- alternate recipe selection
+- compact dependency outline
+- raw materials to mine
+- components to produce
+- quantitative progress tracking with local persistence
+- total runtime, mass, and volume summary
 
-## Phase 2
+## Next
 
-- recursive dependency tree
-- total materials rollup
-- total runtime rollup
-- base ore or base materials breakdown
+- export and shareable views
+- multi-target planning
+- deeper per-node progress tracking
+- smarter byproduct handling
 
-## Phase 3
-
-- stripped folder upload mode
-- alternate recipe handling
-- export current view
-- nicer visuals and interaction polish
-
-## Phase 4
+## Later
 
 - prices and profitability
-- saved plans
 - compare multiple targets
-
+- broader polish and workflow refinements
