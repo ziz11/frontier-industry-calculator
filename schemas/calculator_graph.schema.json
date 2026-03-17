@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/frontier-industry-calculator/calculator_graph.schema.json",
+  "title": "Frontier Industry Calculator Graph",
+  "type": "object",
+  "required": ["meta", "items", "recipes", "recipesByOutput", "baseMaterials"],
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["schemaVersion", "snapshot", "generatedAt"],
+      "properties": {
+        "schemaVersion": { "type": "integer", "minimum": 1 },
+        "snapshot": { "type": "string" },
+        "generatedAt": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "items": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["typeID", "name", "isBaseMaterial", "isCraftable"],
+        "properties": {
+          "typeID": { "type": "integer" },
+          "name": { "type": ["string", "null"] },
+          "groupID": { "type": ["integer", "null"] },
+          "categoryID": { "type": ["integer", "null"] },
+          "mass": { "type": ["number", "null"] },
+          "volume": { "type": ["number", "null"] },
+          "isBaseMaterial": { "type": "boolean" },
+          "isCraftable": { "type": "boolean" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "recipes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["blueprintID", "inputs", "outputs"],
+        "properties": {
+          "blueprintID": { "type": "integer" },
+          "primaryTypeID": { "type": ["integer", "null"] },
+          "runTime": { "type": ["number", "null"] },
+          "inputs": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/materialNode" }
+          },
+          "outputs": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/materialNode" }
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "recipesByOutput": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "integer" }
+      }
+    },
+    "baseMaterials": {
+      "type": "array",
+      "items": { "type": "integer" }
+    }
+  },
+  "$defs": {
+    "materialNode": {
+      "type": "object",
+      "required": ["typeID", "quantity"],
+      "properties": {
+        "typeID": { "type": "integer" },
+        "quantity": { "type": "number" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
+

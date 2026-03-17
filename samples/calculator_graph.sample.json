@@ -1,0 +1,46 @@
+{
+  "meta": {
+    "schemaVersion": 1,
+    "snapshot": "sample.snapshot",
+    "generatedAt": "2026-03-17T00:00:00Z"
+  },
+  "items": {
+    "100": {
+      "typeID": 100,
+      "name": "Raw Ore A",
+      "groupID": 10,
+      "categoryID": 1,
+      "mass": 1.0,
+      "volume": 1.0,
+      "isBaseMaterial": true,
+      "isCraftable": false
+    },
+    "200": {
+      "typeID": 200,
+      "name": "Component A",
+      "groupID": 20,
+      "categoryID": 2,
+      "mass": 2.0,
+      "volume": 0.5,
+      "isBaseMaterial": false,
+      "isCraftable": true
+    }
+  },
+  "recipes": {
+    "1000": {
+      "blueprintID": 1000,
+      "primaryTypeID": 200,
+      "runTime": 5,
+      "inputs": [
+        { "typeID": 100, "quantity": 2 }
+      ],
+      "outputs": [
+        { "typeID": 200, "quantity": 1 }
+      ]
+    }
+  },
+  "recipesByOutput": {
+    "200": [1000]
+  },
+  "baseMaterials": [100]
+}

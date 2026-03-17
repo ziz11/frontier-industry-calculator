@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Frontier Industry Calculator</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="background-grid" aria-hidden="true"></div>
+    <main class="page-shell">
+      <section class="hero">
+        <p class="eyebrow">EVE Frontier Companion Tool</p>
+        <h1>Frontier Industry Calculator</h1>
+        <p class="hero-copy">
+          Static HTML calculator for recipes, dependency trees, base ore rollups, and total build time.
+        </p>
+      </section>
+
+      <section class="load-panel">
+        <article class="load-card">
+          <h2>Load Graph JSON</h2>
+          <p>Preferred mode. Use one normalized <code>calculator_graph.json</code> file.</p>
+          <label class="file-button">
+            <input type="file" id="graphFile" accept=".json,application/json" />
+            <span>Select JSON File</span>
+          </label>
+        </article>
+
+        <article class="load-card">
+          <h2>Load Stripped Folder</h2>
+          <p>Fallback mode. Choose a folder containing <code>types.json</code> and <code>industry_blueprints.json</code>.</p>
+          <label class="file-button">
+            <input type="file" id="folderInput" webkitdirectory directory multiple />
+            <span>Select Folder</span>
+          </label>
+        </article>
+      </section>
+
+      <section class="workspace">
+        <div class="workspace-header">
+          <div>
+            <p class="panel-label">Product Scaffold</p>
+            <h2>Planned Calculator Surface</h2>
+          </div>
+          <div id="statusPill" class="status-pill">No data loaded</div>
+        </div>
+
+        <div class="workspace-grid">
+          <article class="panel">
+            <p class="panel-label">Search</p>
+            <h3>Item Picker</h3>
+            <p>Search by English item name, select output target, choose run count or requested quantity.</p>
+          </article>
+
+          <article class="panel">
+            <p class="panel-label">Summary</p>
+            <h3>Recipe Summary</h3>
+            <p>Show the selected recipe, direct inputs and outputs, and total runtime for the requested build amount.</p>
+          </article>
+
+          <article class="panel">
+            <p class="panel-label">Tree</p>
+            <h3>Dependency Chain</h3>
+            <p>Expand one level down or all the way to base materials. This is where the nested production structure will live.</p>
+          </article>
+
+          <article class="panel">
+            <p class="panel-label">Totals</p>
+            <h3>Base Ore Rollup</h3>
+            <p>Roll final material needs down to the leaf resources and show total ore, components, and total time.</p>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+  </html>
+
