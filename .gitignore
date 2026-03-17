@@ -2,4 +2,5 @@ dist/
 node_modules/
 .DS_Store
 *.log
-
+item_icons/
+item_icons.zip
