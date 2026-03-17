@@ -43,6 +43,13 @@ The source flow is:
 The stripped-folder browser path is supported in the app, but treat it as a secondary flow until you verify it in your environment.
 The original Phobos tooling and extraction helpers may evolve over time; this repository is written against the data outputs above, not a frozen implementation of the upstream tools.
 
+## Reference Snapshots
+
+- reference upstream: [`Phobos_EVE_Frontier`](https://github.com/ziz11/Phobos_EVE_Frontier)
+- C5 snapshot: [`f2bcf24705d1e924e40729c5abf3055667f06d4e`](https://github.com/ziz11/Phobos_EVE_Frontier/commit/f2bcf24705d1e924e40729c5abf3055667f06d4e)
+- at the time of writing, the relevant upstream branch was `fsdbinary-t1`
+- this is a source reference, not a promise that upstream tooling stays fixed
+
 ## Credits and References
 
 The calculator data flow and presentation are informed by the projects below.
