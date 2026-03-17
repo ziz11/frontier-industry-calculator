@@ -26,6 +26,21 @@ Supported input modes:
 
 CSV is useful for Google Sheets, but not as the main runtime format for the calculator itself.
 
+## Data Provenance
+
+The calculator does not read the raw EVE client directly.
+The source flow is:
+
+1. use `Phobos` to extract and normalize the client data
+2. keep the stripped outputs we actually need:
+   - `data/stripped/types.json`
+   - `data/stripped/industry_blueprints.json`
+3. optionally produce local icons as `item_icons.zip`
+4. run `scripts/generate_calculator_graph.py` against the stripped folder to build `calculator_graph.json`
+5. load the generated graph in `web/`, or point the app at the stripped folder if you want to use the fallback browser path
+
+The stripped-folder browser path is supported in the app, but treat it as a secondary flow until you verify it in your environment.
+
 ## Credits and References
 
 The calculator data flow and presentation are informed by the projects below.
@@ -84,32 +99,36 @@ frontier-industry-calculator/
   web/
 ```
 
-## Related Data Source
+## How to Run
 
-The current repository can already produce split data under:
+### Recommended runtime bundle
 
-- `evefrontier_datasets_split/<snapshot>/data/stripped/types.json`
-- `evefrontier_datasets_split/<snapshot>/data/stripped/industry_blueprints.json`
+If you already have `calculator_graph.json`, the minimal runtime bundle is:
 
-Those files are the input for the graph generator and can also be loaded directly by the browser fallback flow.
+- `web/`
+- `calculator_graph.json`
+- optional `item_icons.zip`
 
-Recommended browser flow:
+Open `web/index.html` and load the files through the browser file pickers.
 
-1. generate `evefrontier_datasets_split/<snapshot>/calculator_graph.json`
-2. optionally generate `item_icons.zip` with `Phobos/generate_image_zip.py`
-3. open `web/index.html`
-4. select `calculator_graph.json` through the normal file picker
-5. if available, select `item_icons.zip` through the icon picker
-6. choose a target, quantity, and recipe path
-7. track `Raw Materials to Mine` and `Components to Produce`
+### From stripped Phobos outputs
 
-## Current Generator
+If you only have the stripped data, the minimum source bundle is:
+
+- `web/`
+- `data/stripped/types.json`
+- `data/stripped/industry_blueprints.json`
+- optional `item_icons.zip`
+
+In that case, first run the graph generator, then open the browser app with the generated graph.
+
+### Graph generation
 
 The project already includes a first generator:
 
 ```bash
-python3 frontier-industry-calculator/scripts/generate_calculator_graph.py \
-  --stripped-dir evefrontier_datasets_split/16.03.2026.reapers/data/stripped \
+python3 scripts/generate_calculator_graph.py \
+  --stripped-dir /path/to/phobos-output/data/stripped \
   --output /tmp/calculator_graph.json
 ```
 
@@ -120,6 +139,8 @@ Current behavior:
 - indexes recipes by produced output type
 - marks `baseMaterials` using the current leaf heuristic:
   material is treated as base if it is used as an input and has no recipe that produces it
+- only needs the stripped Phobos outputs listed above
+- does not require the full source repository if you already have the stripped files and icons
 
 ## Near-Term Development Plan
 
@@ -133,3 +154,4 @@ Current behavior:
 
 The app should prefer file picker and drag-and-drop flows.
 Direct filesystem path strings are not reliable in a static browser app because of browser sandbox restrictions.
+The stripped-folder browser path exists for convenience, but the graph-file flow is the recommended one.

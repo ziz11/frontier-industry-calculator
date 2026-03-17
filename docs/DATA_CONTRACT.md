@@ -9,9 +9,6 @@ Preferred runtime input:
 - `calculator_graph.json`
 
 This is the format the HTML app should optimize for.
-Recommended file-picker target:
-
-- `evefrontier_datasets_split/<snapshot>/calculator_graph.json`
 
 ### 2. Stripped Folder
 
@@ -21,6 +18,25 @@ Fallback runtime input:
 - `industry_blueprints.json`
 
 This mode exists so the app can still work without a pre-generated graph file.
+The stripped folder is expected to contain exactly these two files.
+
+### 3. Local Icon ZIP
+
+Optional enrichment input:
+
+- `item_icons.zip`
+
+The calculator can use this for local item artwork without depending on an external service.
+
+## Source Files From Phobos
+
+The raw client data is extracted and normalized outside this repository with `Phobos`.
+From that pipeline, this repo only needs the stripped outputs:
+
+- `data/stripped/types.json`
+- `data/stripped/industry_blueprints.json`
+
+If icons are available, they can be packaged separately as `item_icons.zip`.
 
 ## Why Graph JSON
 
@@ -98,7 +114,7 @@ Keyed by `typeID`.
 
 ### `baseMaterials`
 
-List of type IDs treated as leaf materials for full rollup.
+List of type IDs treated as leaf materials for full rollup and raw-material planning.
 
 ```json
 [88510, 88511, 88512]
@@ -111,8 +127,8 @@ For the first implementation, `baseMaterials` are derived by a simple rule:
 - the item appears in recipe inputs
 - the item does not appear as an output of any known recipe
 
-This is enough for the first tree and rollup implementation.
-If later we need stricter ore classification, we can add explicit flags or a separate mapping layer.
+This is enough for the first tree, rollup, and mining-list implementation.
+If later we need stricter ore classification or byproduct-aware planning, we can add explicit flags or a separate mapping layer.
 
 ## Current Runtime Interpretation
 
@@ -124,3 +140,31 @@ The browser currently interprets the graph with these rules:
 - byproducts are displayed in the tree and summary but are not reused automatically
 - if one output has multiple recipes, the UI defaults to the first recipe and allows switching
 - if the recipe graph loops back to an ancestor item, recursion stops and the node is marked as a cycle
+
+## Runtime Bundle Summary
+
+Minimum bundle if the graph already exists:
+
+- `web/`
+- `calculator_graph.json`
+- optional `item_icons.zip`
+
+Minimum bundle if you only have stripped source data:
+
+- `web/`
+- `types.json`
+- `industry_blueprints.json`
+- optional `item_icons.zip`
+
+In that case, generate `calculator_graph.json` first, then load the browser app with the graph.
+
+## UI-Level Expectations
+
+The loaded data should support:
+
+- alternate recipes for the same output type
+- exact `typeID` lookup
+- category/group browsing
+- raw-material and component rollups
+- local progress persistence
+- optional icon resolution from a ZIP file

@@ -4,6 +4,17 @@
 
 Ship a static HTML production planner that feels like a real local tool, not a raw data viewer.
 
+## Data Flow
+
+The app is designed around Phobos-derived inputs:
+
+- Phobos extracts and normalizes the client data outside this repository
+- this repo consumes the stripped outputs
+- the graph generator turns the stripped inputs into `calculator_graph.json`
+- the browser app loads either the generated graph or, secondarily, a stripped folder
+
+The stripped-folder browser path exists, but the graph-file flow should be treated as the primary and safest route.
+
 ## Primary User Tasks
 
 - load one data file or a stripped data folder
@@ -36,6 +47,24 @@ MVP should focus on:
 - clear operational outputs
 - accurate totals from the loaded data
 - local-first persistence of the current plan state
+
+## Required Files
+
+For the recommended runtime flow, the only required files are:
+
+- `web/`
+- `calculator_graph.json`
+
+Optional:
+
+- `item_icons.zip`
+
+For the stripped-data flow, the required source files are:
+
+- `types.json`
+- `industry_blueprints.json`
+
+Then run the generator to create `calculator_graph.json` before loading the web app.
 
 ## Current MVP Slice
 
