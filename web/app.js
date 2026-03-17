@@ -740,6 +740,24 @@
     }
   }
 
+  function updateProgressInputValue({
+    state,
+    typeID,
+    value,
+    refreshProgressState,
+    persistCurrentPlanProgress,
+    renderActiveTargetCard,
+    renderTree,
+  }) {
+    // Keep the live input stable while typing; re-rendering the progress table here
+    // would replace the active <input> and drop the user's cursor after each keypress.
+    state.progressByTypeID[typeID] = normalizeProgressValue(value);
+    refreshProgressState();
+    persistCurrentPlanProgress();
+    renderActiveTargetCard();
+    renderTree();
+  }
+
   function shouldDataSectionBeOpen(graph) {
     return !graph;
   }
@@ -1850,12 +1868,15 @@
       }
 
       const typeID = Number(input.dataset.progressHaveTypeId);
-      state.progressByTypeID[typeID] = normalizeProgressValue(input.value);
-      refreshProgressState();
-      persistCurrentPlanProgress();
-      renderActiveTargetCard();
-      renderProgress();
-      renderTree();
+      updateProgressInputValue({
+        state,
+        typeID,
+        value: input.value,
+        refreshProgressState,
+        persistCurrentPlanProgress,
+        renderActiveTargetCard,
+        renderTree,
+      });
     }
 
     function handleProgressToggle(event) {
@@ -1928,6 +1949,7 @@
     saveStoredPlanProgress,
     searchCraftableItems,
     shouldDataSectionBeOpen,
+    updateProgressInputValue,
   };
 
   if (typeof module !== "undefined" && module.exports) {

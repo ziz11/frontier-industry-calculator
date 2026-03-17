@@ -20,6 +20,7 @@ const {
   saveStoredPlanProgress,
   searchCraftableItems,
   shouldDataSectionBeOpen,
+  updateProgressInputValue,
   createRecipeSummary,
 } = require("../web/app.js");
 
@@ -486,4 +487,42 @@ test("buildGraphFromStrippedData creates a runtime graph from stripped source fi
   assert.equal(graph.items[200].isCraftable, true);
   assert.deepEqual(graph.recipesByOutput[200], [1000]);
   assert.deepEqual(graph.baseMaterials, [100]);
+});
+
+test("updateProgressInputValue updates progress state without requiring a progress-table rerender", () => {
+  const state = {
+    progressByTypeID: {},
+  };
+  const calls = {
+    refresh: 0,
+    persist: 0,
+    active: 0,
+    tree: 0,
+  };
+
+  updateProgressInputValue({
+    state,
+    typeID: 200,
+    value: "12",
+    refreshProgressState() {
+      calls.refresh += 1;
+    },
+    persistCurrentPlanProgress() {
+      calls.persist += 1;
+    },
+    renderActiveTargetCard() {
+      calls.active += 1;
+    },
+    renderTree() {
+      calls.tree += 1;
+    },
+  });
+
+  assert.equal(state.progressByTypeID[200], 12);
+  assert.deepEqual(calls, {
+    refresh: 1,
+    persist: 1,
+    active: 1,
+    tree: 1,
+  });
 });
