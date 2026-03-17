@@ -30,6 +30,10 @@ The calculator can use this for local item artwork without depending on an exter
 
 ## Source Files From Phobos
 
+The pinned source branch/commit used for the current pipeline is:
+
+- [`Phobos_EVE_Frontier@f2bcf24705d1e924e40729c5abf3055667f06d4e`](https://github.com/ziz11/Phobos_EVE_Frontier/commit/f2bcf24705d1e924e40729c5abf3055667f06d4e)
+
 The raw client data is extracted and normalized outside this repository with `Phobos`.
 From that pipeline, this repo only needs the stripped outputs:
 

@@ -31,7 +31,7 @@ CSV is useful for Google Sheets, but not as the main runtime format for the calc
 The calculator does not read the raw EVE client directly.
 The source flow is:
 
-1. use `Phobos` to extract and normalize the client data
+1. use [`Phobos_EVE_Frontier`](https://github.com/ziz11/Phobos_EVE_Frontier/commit/f2bcf24705d1e924e40729c5abf3055667f06d4e) to extract and normalize the client data
 2. keep the stripped outputs we actually need:
    - `data/stripped/types.json`
    - `data/stripped/industry_blueprints.json`

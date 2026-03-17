@@ -8,7 +8,7 @@ Ship a static HTML production planner that feels like a real local tool, not a r
 
 The app is designed around Phobos-derived inputs:
 
-- Phobos extracts and normalizes the client data outside this repository
+- [`Phobos_EVE_Frontier`](https://github.com/ziz11/Phobos_EVE_Frontier/commit/f2bcf24705d1e924e40729c5abf3055667f06d4e) extracts and normalizes the client data outside this repository
 - this repo consumes the stripped outputs
 - the graph generator turns the stripped inputs into `calculator_graph.json`
 - the browser app loads either the generated graph or, secondarily, a stripped folder
