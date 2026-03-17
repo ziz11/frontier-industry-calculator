@@ -31,15 +31,17 @@ CSV is useful for Google Sheets, but not as the main runtime format for the calc
 The calculator does not read the raw EVE client directly.
 The source flow is:
 
-1. use [`Phobos_EVE_Frontier`](https://github.com/ziz11/Phobos_EVE_Frontier/commit/f2bcf24705d1e924e40729c5abf3055667f06d4e) to extract and normalize the client data
-2. keep the stripped outputs we actually need:
+1. use [`Phobos_EVE_Frontier`](https://github.com/ziz11/Phobos_EVE_Frontier) as the reference upstream for extraction and normalization
+2. for the C5 work, this repo was exercised against commit [`f2bcf24705d1e924e40729c5abf3055667f06d4e`](https://github.com/ziz11/Phobos_EVE_Frontier/commit/f2bcf24705d1e924e40729c5abf3055667f06d4e)
+3. keep the stripped outputs we actually need:
    - `data/stripped/types.json`
    - `data/stripped/industry_blueprints.json`
-3. optionally produce local icons as `item_icons.zip`
-4. run `scripts/generate_calculator_graph.py` against the stripped folder to build `calculator_graph.json`
-5. load the generated graph in `web/`, or point the app at the stripped folder if you want to use the fallback browser path
+4. optionally produce local icons as `item_icons.zip`
+5. run `scripts/generate_calculator_graph.py` against the stripped folder to build `calculator_graph.json`
+6. load the generated graph in `web/`, or point the app at the stripped folder if you want to use the fallback browser path
 
 The stripped-folder browser path is supported in the app, but treat it as a secondary flow until you verify it in your environment.
+The original Phobos tooling and extraction helpers may evolve over time; this repository is written against the data outputs above, not a frozen implementation of the upstream tools.
 
 ## Credits and References
 

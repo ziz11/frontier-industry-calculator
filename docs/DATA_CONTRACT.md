@@ -30,9 +30,15 @@ The calculator can use this for local item artwork without depending on an exter
 
 ## Source Files From Phobos
 
-The pinned source branch/commit used for the current pipeline is:
+Reference upstream:
 
-- [`Phobos_EVE_Frontier@f2bcf24705d1e924e40729c5abf3055667f06d4e`](https://github.com/ziz11/Phobos_EVE_Frontier/commit/f2bcf24705d1e924e40729c5abf3055667f06d4e)
+- [`Phobos_EVE_Frontier`](https://github.com/ziz11/Phobos_EVE_Frontier)
+
+For the C5 work, this repo was exercised against commit:
+
+- [`f2bcf24705d1e924e40729c5abf3055667f06d4e`](https://github.com/ziz11/Phobos_EVE_Frontier/commit/f2bcf24705d1e924e40729c5abf3055667f06d4e)
+
+At the time of writing, the upstream reference branch in the related repos was `fsdbinary-t1`.
 
 The raw client data is extracted and normalized outside this repository with `Phobos`.
 From that pipeline, this repo only needs the stripped outputs:
@@ -41,6 +47,8 @@ From that pipeline, this repo only needs the stripped outputs:
 - `data/stripped/industry_blueprints.json`
 
 If icons are available, they can be packaged separately as `item_icons.zip`.
+
+The upstream extraction tooling may change over time; this repository only depends on the exported data shapes above.
 
 ## Why Graph JSON
 

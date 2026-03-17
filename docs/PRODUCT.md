@@ -8,10 +8,13 @@ Ship a static HTML production planner that feels like a real local tool, not a r
 
 The app is designed around Phobos-derived inputs:
 
-- [`Phobos_EVE_Frontier`](https://github.com/ziz11/Phobos_EVE_Frontier/commit/f2bcf24705d1e924e40729c5abf3055667f06d4e) extracts and normalizes the client data outside this repository
+- [`Phobos_EVE_Frontier`](https://github.com/ziz11/Phobos_EVE_Frontier) is the reference upstream for extraction and normalization
+- for the C5 work, this repo was exercised against commit [`f2bcf24705d1e924e40729c5abf3055667f06d4e`](https://github.com/ziz11/Phobos_EVE_Frontier/commit/f2bcf24705d1e924e40729c5abf3055667f06d4e)
 - this repo consumes the stripped outputs
 - the graph generator turns the stripped inputs into `calculator_graph.json`
 - the browser app loads either the generated graph or, secondarily, a stripped folder
+
+The original upstream tools may continue to evolve, so this doc describes the data contract and current reference snapshot rather than a permanently frozen toolchain.
 
 The stripped-folder browser path exists, but the graph-file flow should be treated as the primary and safest route.
 
