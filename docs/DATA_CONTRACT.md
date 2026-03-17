@@ -9,6 +9,9 @@ Preferred runtime input:
 - `calculator_graph.json`
 
 This is the format the HTML app should optimize for.
+Recommended file-picker target:
+
+- `evefrontier_datasets_split/<snapshot>/calculator_graph.json`
 
 ### 2. Stripped Folder
 
@@ -18,14 +21,6 @@ Fallback runtime input:
 - `industry_blueprints.json`
 
 This mode exists so the app can still work without a pre-generated graph file.
-
-### 3. Local Icon ZIP
-
-Optional enrichment input:
-
-- `item_icons.zip`
-
-The calculator can use this for local item artwork without depending on an external service.
 
 ## Why Graph JSON
 
@@ -103,7 +98,7 @@ Keyed by `typeID`.
 
 ### `baseMaterials`
 
-List of type IDs treated as leaf materials for full rollup and raw-material planning.
+List of type IDs treated as leaf materials for full rollup.
 
 ```json
 [88510, 88511, 88512]
@@ -116,16 +111,16 @@ For the first implementation, `baseMaterials` are derived by a simple rule:
 - the item appears in recipe inputs
 - the item does not appear as an output of any known recipe
 
-This is enough for the first tree, rollup, and mining-list implementation.
-If later we need stricter ore classification or byproduct-aware planning, we can add explicit flags or a separate mapping layer.
+This is enough for the first tree and rollup implementation.
+If later we need stricter ore classification, we can add explicit flags or a separate mapping layer.
 
-## UI-Level Expectations
+## Current Runtime Interpretation
 
-The loaded data should support:
+The browser currently interprets the graph with these rules:
 
-- alternate recipes for the same output type
-- exact `typeID` lookup
-- category/group browsing
-- raw-material and component rollups
-- local progress persistence
-- optional icon resolution from a ZIP file
+- calculations are quantity-driven, not run-driven
+- runs needed are `ceil(requestedQuantity / selectedOutputQuantity)`
+- if one recipe outputs multiple items, all outputs are shown as byproducts
+- byproducts are displayed in the tree and summary but are not reused automatically
+- if one output has multiple recipes, the UI defaults to the first recipe and allows switching
+- if the recipe graph loops back to an ancestor item, recursion stops and the node is marked as a cycle

@@ -7,74 +7,204 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="background-grid" aria-hidden="true"></div>
     <main class="page-shell">
-      <section class="hero">
-        <p class="eyebrow">EVE Frontier Companion Tool</p>
-        <h1>Frontier Industry Calculator</h1>
-        <p class="hero-copy">
-          Static HTML calculator for recipes, dependency trees, base ore rollups, and total build time.
-        </p>
-      </section>
-
-      <section class="load-panel">
-        <article class="load-card">
-          <h2>Load Graph JSON</h2>
-          <p>Preferred mode. Use one normalized <code>calculator_graph.json</code> file.</p>
-          <label class="file-button">
-            <input type="file" id="graphFile" accept=".json,application/json" />
-            <span>Select JSON File</span>
-          </label>
-        </article>
-
-        <article class="load-card">
-          <h2>Load Stripped Folder</h2>
-          <p>Fallback mode. Choose a folder containing <code>types.json</code> and <code>industry_blueprints.json</code>.</p>
-          <label class="file-button">
-            <input type="file" id="folderInput" webkitdirectory directory multiple />
-            <span>Select Folder</span>
-          </label>
-        </article>
-      </section>
-
-      <section class="workspace">
-        <div class="workspace-header">
-          <div>
-            <p class="panel-label">Product Scaffold</p>
-            <h2>Planned Calculator Surface</h2>
-          </div>
-          <div id="statusPill" class="status-pill">No data loaded</div>
+      <header class="top-bar">
+        <div class="top-bar-copy">
+          <p class="eyebrow">Offline Production Planner</p>
+          <h1>Frontier Industry Calculator</h1>
         </div>
+        <div id="statusPill" class="status-pill">No data loaded</div>
+      </header>
 
-        <div class="workspace-grid">
-          <article class="panel">
-            <p class="panel-label">Search</p>
-            <h3>Item Picker</h3>
-            <p>Search by English item name, select output target, choose run count or requested quantity.</p>
-          </article>
+      <section class="workbench-layout">
+        <aside class="workbench-sidebar">
+          <details id="dataSection" class="workbench-section data-section" open>
+            <summary class="section-head">
+              <span>Data</span>
+            </summary>
+            <div class="data-controls">
+              <label class="data-row">
+                <span class="data-label">Graph JSON</span>
+                <input type="file" id="graphFile" accept=".json,application/json" />
+              </label>
+              <label class="data-row">
+                <span class="data-label">Stripped Folder</span>
+                <input type="file" id="folderInput" webkitdirectory directory multiple />
+              </label>
+              <label class="data-row">
+                <span class="data-label">Icons ZIP</span>
+                <input type="file" id="iconZipFile" accept=".zip,application/zip" />
+              </label>
+            </div>
+          </details>
 
-          <article class="panel">
-            <p class="panel-label">Summary</p>
-            <h3>Recipe Summary</h3>
-            <p>Show the selected recipe, direct inputs and outputs, and total runtime for the requested build amount.</p>
-          </article>
+          <section class="workbench-section target-section">
+            <div class="section-head">
+              <h2>Target</h2>
+              <span id="catalogBranchCount" class="section-meta"></span>
+            </div>
 
-          <article class="panel">
-            <p class="panel-label">Tree</p>
-            <h3>Dependency Chain</h3>
-            <p>Expand one level down or all the way to base materials. This is where the nested production structure will live.</p>
-          </article>
+            <div class="target-panel target-panel-primary">
+              <div class="target-panel-head">
+                <h3>Discover</h3>
+              </div>
 
-          <article class="panel">
-            <p class="panel-label">Totals</p>
-            <h3>Base Ore Rollup</h3>
-            <p>Roll final material needs down to the leaf resources and show total ore, components, and total time.</p>
-          </article>
-        </div>
+              <div id="searchSection" class="target-subsection">
+                <label class="search-label" for="searchInput">Search</label>
+                <input id="searchInput" class="text-input" type="search" placeholder="Load data first" disabled />
+              </div>
+
+              <div id="resultsSection" class="target-subsection">
+                <div class="catalog-subhead">Results</div>
+                <ol id="searchResults" class="result-list">
+                  <li class="result-empty">Load a graph or stripped folder first.</li>
+                </ol>
+              </div>
+            </div>
+
+            <details id="filterSection" class="target-panel target-panel-collapsible">
+              <summary class="target-panel-head">
+                <h3>Filters</h3>
+                <span id="catalogBranchTitle">All craftable</span>
+              </summary>
+              <div class="target-panel-body">
+                <div id="catalogTree" class="catalog-tree">
+                  <p class="result-empty">Load data to browse craftable categories.</p>
+                </div>
+              </div>
+            </details>
+
+            <div class="target-panel">
+              <div class="target-panel-head">
+                <h3>Selection</h3>
+              </div>
+
+              <div id="selectedTargetSection" class="target-subsection">
+                <div class="catalog-subhead">Selected target</div>
+                <div id="selectedItemCard" class="selected-target-row">
+                  <span class="meta-label">Selected</span>
+                  <strong>No target selected</strong>
+                </div>
+              </div>
+
+              <div class="setup-grid">
+                <label class="setup-field">
+                  <span class="field-label">Quantity</span>
+                  <input id="quantityInput" class="number-input" type="number" min="1" step="1" value="1" disabled />
+                </label>
+                <div id="summaryRecipeField" class="setup-field" hidden>
+                  <label class="field-label" for="summaryRecipeSelect">Recipe</label>
+                  <select id="summaryRecipeSelect" class="text-input"></select>
+                </div>
+              </div>
+
+              <div id="summaryEmpty" class="summary-empty">Select a craftable item to start planning.</div>
+              <div id="summaryContent" class="setup-summary" hidden>
+                <div id="summaryTitle" class="setup-target-title"></div>
+                <div id="summaryMeta" class="setup-meta"></div>
+              </div>
+            </div>
+          </section>
+        </aside>
+
+        <section class="workbench-main">
+          <section id="rawMaterialsSection" class="plan-section">
+            <div class="section-head">
+              <h2>Raw Materials to Mine</h2>
+              <span id="rawMaterialsCount" class="section-meta"></span>
+            </div>
+            <div id="rawMaterialsPreview" class="table-area">
+              <p>Choose a target to generate the mining list.</p>
+            </div>
+          </section>
+
+          <section id="componentsSection" class="plan-section">
+            <div class="section-head">
+              <h2>Components to Produce</h2>
+              <span id="componentsCount" class="section-meta"></span>
+            </div>
+            <div id="componentsPreview" class="table-area">
+              <p>Choose a target to generate direct component work.</p>
+            </div>
+          </section>
+
+          <details id="dependencyOutlineSection" class="plan-section outline-section">
+            <summary class="section-head">
+              <h2>Dependency Outline</h2>
+              <span id="outlineMeta" class="section-meta">Collapsed</span>
+            </summary>
+            <div id="treePreview" class="outline-area">
+              <p>Select a target to inspect the production chain.</p>
+            </div>
+          </details>
+        </section>
+
+        <aside id="summaryRail" class="workbench-rail">
+          <section id="datasetSection" class="rail-section">
+            <div class="section-head">
+              <h2>Dataset</h2>
+            </div>
+            <div id="snapshotMetrics" class="summary-stack">
+              <div class="summary-row">
+                <span class="summary-key">Dataset</span>
+                <strong>No dataset loaded</strong>
+              </div>
+            </div>
+          </section>
+
+          <section id="currentPlanSection" class="rail-section">
+            <div class="section-head">
+              <h2>Current Plan</h2>
+            </div>
+            <div id="activeTargetCard" class="summary-stack">
+              <div class="summary-row">
+                <span class="summary-key">Target</span>
+                <strong>No target selected</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="rail-section">
+            <div class="section-head">
+              <h2>View</h2>
+            </div>
+            <div class="control-list">
+              <div class="control-row dual-buttons">
+                <button type="button" class="mini-button" data-tree-action="expand-all">Expand</button>
+                <button type="button" class="mini-button" data-tree-action="collapse-all">Collapse</button>
+              </div>
+              <label class="control-row toggle-row">
+                <span class="summary-key">Recipe details</span>
+                <input id="showRecipeDetailsToggle" type="checkbox" />
+              </label>
+              <label class="control-row toggle-row">
+                <span class="summary-key">Blueprint ids</span>
+                <input id="showBlueprintIdsToggle" type="checkbox" checked />
+              </label>
+              <label class="control-row toggle-row">
+                <span class="summary-key">Tracked status</span>
+                <input id="showTrackedStatusToggle" type="checkbox" checked />
+              </label>
+              <label class="control-row">
+                <span class="summary-key">Depth</span>
+                <select id="treeDepthSelect" class="text-input">
+                  <option value="">All</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                </select>
+              </label>
+              <label class="control-row toggle-row">
+                <span class="summary-key">Hide covered</span>
+                <input id="hideCoveredToggle" type="checkbox" />
+              </label>
+            </div>
+          </section>
+        </aside>
       </section>
     </main>
 
     <script src="./app.js"></script>
   </body>
-  </html>
-
+</html>
