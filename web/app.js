@@ -345,6 +345,176 @@
     return filterCatalogItems(graph, null, query, limit);
   }
 
+  function searchPlannerCatalog(graph, query, limit = 30) {
+    if (!graph) {
+      return [];
+    }
+    return filterCatalogItems(graph, null, query, limit);
+  }
+
+  function normalizePlannerLineQuantity(value) {
+    const numericValue = Math.floor(Number(value) || 0);
+    return Math.max(1, numericValue);
+  }
+
+  function getPlannerRecipeOptionsForType(typeId, recipeOptionsByType = {}, graph = null) {
+    const mappedOptions = recipeOptionsByType?.[typeId] ?? recipeOptionsByType?.[String(typeId)];
+    if (Array.isArray(mappedOptions) && mappedOptions.length) {
+      return mappedOptions
+        .filter((option) => option && Number.isFinite(Number(option.blueprintId)))
+        .map((option) => ({
+          blueprintId: Number(option.blueprintId),
+          label: option.label || null,
+        }))
+        .sort((left, right) => left.blueprintId - right.blueprintId);
+    }
+
+    const graphRecipeIds = graph?.recipesByOutput?.[typeId] ?? graph?.recipesByOutput?.[String(typeId)] ?? [];
+    return graphRecipeIds
+      .map((recipeId) => Number(recipeId))
+      .filter((recipeId) => Number.isFinite(recipeId))
+      .sort((left, right) => left - right)
+      .map((recipeId) => ({ blueprintId: recipeId, label: null }));
+  }
+
+  function buildPlannerLineViewModels({ planLines = [], recipeChoiceByType = {}, recipeOptionsByType = {}, graph = null }) {
+    return (Array.isArray(planLines) ? planLines : []).map((line) => {
+      const outputTypeId = Number(line.outputTypeId);
+      const quantity = normalizePlannerLineQuantity(line.quantity);
+      const options = getPlannerRecipeOptionsForType(outputTypeId, recipeOptionsByType, graph);
+      const selectedBlueprintId = Number(
+        recipeChoiceByType?.[outputTypeId] ?? recipeChoiceByType?.[String(outputTypeId)] ?? options[0]?.blueprintId,
+      );
+      const selectedOption = options.find((option) => option.blueprintId === selectedBlueprintId) || options[0] || null;
+      const selectedRecipeSummary = selectedOption
+        ? selectedOption.label || `Blueprint ${selectedOption.blueprintId}`
+        : null;
+
+      return {
+        lineId: line.lineId,
+        outputTypeId,
+        quantity,
+        selectedRecipeSummary,
+        hasMultiRecipe: options.length > 1,
+      };
+    });
+  }
+
+  function renderPlannerLinesMarkup({ planLines = [], recipeChoiceByType = {}, recipeOptionsByType = {}, graph = null }) {
+    const viewModels = buildPlannerLineViewModels({
+      planLines,
+      recipeChoiceByType,
+      recipeOptionsByType,
+      graph,
+    });
+
+    if (!viewModels.length) {
+      return `<div class="planner-empty-state">No plan lines yet. Search and add a craftable item to begin.</div>`;
+    }
+
+    return viewModels
+      .map(
+        (line) => `
+          <div class="planner-line-row" data-line-id="${line.lineId}">
+            <div class="planner-line-main">
+              <div class="planner-line-type">Type ${line.outputTypeId}</div>
+              ${
+                line.selectedRecipeSummary
+                  ? `<div class="planner-line-recipe">${escapeHtml(line.selectedRecipeSummary)}</div>`
+                  : `<div class="planner-line-recipe planner-line-recipe-empty">No recipe selected</div>`
+              }
+            </div>
+            <input type="number" min="1" step="1" value="${line.quantity}" data-planner-quantity-line-id="${line.lineId}" />
+            <div class="planner-line-actions">
+              ${line.hasMultiRecipe ? `<span class="planner-multi-recipe-badge">Multi</span>` : ""}
+              <button type="button" class="mini-button" data-planner-remove-line-id="${line.lineId}">Remove</button>
+            </div>
+          </div>
+        `,
+      )
+      .join("");
+  }
+
+  function buildPlannerRecipeOptionsByTypeFromGraph(graph) {
+    const optionsByType = {};
+    const recipesByOutput = graph?.recipesByOutput || {};
+
+    for (const [typeIdKey, blueprintIds] of Object.entries(recipesByOutput)) {
+      const typeId = Number(typeIdKey);
+      if (!Number.isFinite(typeId) || !Array.isArray(blueprintIds)) {
+        continue;
+      }
+      optionsByType[typeId] = blueprintIds
+        .map((blueprintId) => Number(blueprintId))
+        .filter((blueprintId) => Number.isFinite(blueprintId))
+        .sort((left, right) => left - right)
+        .map((blueprintId) => ({ blueprintId }));
+    }
+
+    return optionsByType;
+  }
+
+  function toSortedPlannerRows(rows = []) {
+    return (Array.isArray(rows) ? rows : [])
+      .map((row) => ({
+        typeId: Number(row?.typeId ?? row?.typeID),
+        quantity: Number(row?.quantity),
+      }))
+      .filter((row) => Number.isFinite(row.typeId) && Number.isFinite(row.quantity))
+      .sort((left, right) => left.typeId - right.typeId);
+  }
+
+  function renderPlannerOutputSectionMarkup({ title, rows = [], emptyMessage }) {
+    const sortedRows = toSortedPlannerRows(rows);
+    const bodyMarkup = sortedRows.length
+      ? `
+        <div class="planner-output-table">
+          <div class="planner-output-row planner-output-row-head">
+            <span>Type</span>
+            <span>Quantity</span>
+          </div>
+          ${sortedRows
+            .map(
+              (row) => `
+                <div class="planner-output-row" data-planner-row-type-id="${row.typeId}">
+                  <span>${row.typeId}</span>
+                  <span>${row.quantity}</span>
+                </div>
+              `,
+            )
+            .join("")}
+        </div>
+      `
+      : `<div class="planner-output-empty">${escapeHtml(emptyMessage)}</div>`;
+
+    return `
+      <section class="planner-output-section">
+        <h3>${escapeHtml(title)}</h3>
+        ${bodyMarkup}
+      </section>
+    `;
+  }
+
+  function renderPlannerAggregatedOutputMarkup(model = {}) {
+    const planLines = model.planLines ?? model.plannerState?.planLines ?? [];
+    const plannerResult = model.plannerResult || {};
+    const hasPlanLines = Array.isArray(planLines) && planLines.length > 0;
+    const noPlanMessage = "No plan lines yet.";
+
+    return {
+      rawMaterialsMarkup: renderPlannerOutputSectionMarkup({
+        title: "Raw Materials to Mine",
+        rows: hasPlanLines ? plannerResult.rawMaterials || [] : [],
+        emptyMessage: hasPlanLines ? "No raw materials required" : noPlanMessage,
+      }),
+      componentsMarkup: renderPlannerOutputSectionMarkup({
+        title: "Components to Produce",
+        rows: hasPlanLines ? plannerResult.components || [] : [],
+        emptyMessage: hasPlanLines ? "No components required" : noPlanMessage,
+      }),
+    };
+  }
+
   function createInputLine(graph, node, runsNeeded) {
     const item = getItem(graph, node.typeID);
     return {
@@ -1263,6 +1433,7 @@
     const support = plannerSupport || getPlannerSupport();
     const runtimeState = {
       mode: "calculator",
+      recipeOptionsByType: recipeOptionsByType || {},
       plannerState: support.createEmptyPlannerState(datasetFingerprint),
       plannerResult: {
         rawMaterials: [],
@@ -1286,7 +1457,7 @@
       runtimeState.plannerResult = support.computePlannerPlan({
         planLines: runtimeState.plannerState.planLines,
         recipeChoiceByType: runtimeState.plannerState.recipeChoiceByType,
-        recipeOptionsByType,
+        recipeOptionsByType: runtimeState.recipeOptionsByType,
         expandDependencies,
       });
     }
@@ -1306,7 +1477,7 @@
       const line = {
         lineId: nextLine.lineId || `line-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         outputTypeId: Number(nextLine.outputTypeId) || 1,
-        quantity: Number(nextLine.quantity) || 1,
+        quantity: normalizePlannerLineQuantity(nextLine.quantity),
       };
       runtimeState.plannerState.planLines = runtimeState.plannerState.planLines.concat([line]);
       recompute();
@@ -1316,7 +1487,7 @@
 
     function updateLineQuantity(lineId, quantity) {
       runtimeState.plannerState.planLines = runtimeState.plannerState.planLines.map((line) =>
-        line.lineId === lineId ? { ...line, quantity: Number(quantity) } : line,
+        line.lineId === lineId ? { ...line, quantity: normalizePlannerLineQuantity(quantity) } : line,
       );
       recompute();
       persist();
@@ -1332,9 +1503,15 @@
       runtimeState.mode = mode === "planner" ? "planner" : "calculator";
     }
 
+    function setRecipeOptionsByType(nextRecipeOptionsByType = {}) {
+      runtimeState.recipeOptionsByType = nextRecipeOptionsByType || {};
+      recompute();
+    }
+
     function getRenderModel() {
       return {
         mode: runtimeState.mode,
+        recipeOptionsByType: runtimeState.recipeOptionsByType,
         plannerState: runtimeState.plannerState,
         plannerResult: runtimeState.plannerResult,
       };
@@ -1348,6 +1525,7 @@
       recompute,
       removeLine,
       setMode,
+      setRecipeOptionsByType,
       updateLineQuantity,
     };
   }
@@ -1390,6 +1568,8 @@
     const modePlannerButton = document.getElementById("modePlanner");
     const calculatorShell = document.getElementById("calculatorShell");
     const plannerShell = document.getElementById("plannerShell");
+    const plannerCatalogSearch = document.getElementById("plannerCatalogSearch");
+    const plannerCatalogResults = document.getElementById("plannerCatalogResults");
     const plannerLines = document.getElementById("plannerLines");
     const plannerRawMaterials = document.getElementById("plannerRawMaterials");
     const plannerComponents = document.getElementById("plannerComponents");
@@ -1431,6 +1611,8 @@
     function renderPlannerShell() {
       const model = plannerRuntime.getRenderModel();
       const isPlanner = model.mode === "planner";
+      const plannerQuery = plannerCatalogSearch?.value || "";
+      const plannerSearchResults = searchPlannerCatalog(state.graph, plannerQuery, 30);
       if (calculatorShell) {
         calculatorShell.hidden = isPlanner;
       }
@@ -1444,32 +1626,43 @@
         modePlannerButton.setAttribute("aria-pressed", String(isPlanner));
       }
 
-      if (plannerLines) {
-        plannerLines.innerHTML = (model.plannerState.planLines || [])
-          .map(
-            (line) => `
-              <div class="planner-line-row" data-line-id="${line.lineId}">
-                <span>${line.outputTypeId}</span>
-                <input type="number" min="1" step="1" value="${line.quantity}" data-planner-quantity-line-id="${line.lineId}" />
-                <button type="button" class="mini-button" data-planner-remove-line-id="${line.lineId}">Remove</button>
-              </div>
-            `,
-          )
-          .join("");
+      if (plannerCatalogResults) {
+        plannerCatalogResults.innerHTML = plannerSearchResults.length
+          ? plannerSearchResults
+              .map(
+                (item) => `
+                  <li class="planner-catalog-result">
+                    <span class="planner-catalog-result-label">${escapeHtml(item.name)} <small>(Type ${item.typeID})</small></span>
+                    <button type="button" class="mini-button" data-planner-add-type-id="${item.typeID}">Add</button>
+                  </li>
+                `,
+              )
+              .join("")
+          : `<li class="planner-catalog-result-empty">${
+              state.graph ? "No matching craftable items." : "Load data to search craftable items."
+            }</li>`;
       }
 
+      if (plannerLines) {
+        plannerLines.innerHTML = renderPlannerLinesMarkup({
+          planLines: model.plannerState.planLines || [],
+          recipeChoiceByType: model.plannerState.recipeChoiceByType || {},
+          recipeOptionsByType: model.recipeOptionsByType || {},
+          graph: state.graph,
+        });
+      }
+
+      const aggregatedOutputMarkup = renderPlannerAggregatedOutputMarkup({
+        planLines: model.plannerState.planLines || [],
+        plannerResult: model.plannerResult || {},
+      });
+
       if (plannerRawMaterials) {
-        const rawLines = model.plannerResult.rawMaterials || [];
-        plannerRawMaterials.textContent = rawLines.length
-          ? rawLines.map((entry) => `${entry.typeId}: ${entry.quantity}`).join("\n")
-          : "No raw materials";
+        plannerRawMaterials.innerHTML = aggregatedOutputMarkup.rawMaterialsMarkup;
       }
 
       if (plannerComponents) {
-        const componentLines = model.plannerResult.components || [];
-        plannerComponents.textContent = componentLines.length
-          ? componentLines.map((entry) => `${entry.typeId}: ${entry.quantity}`).join("\n")
-          : "No components";
+        plannerComponents.innerHTML = aggregatedOutputMarkup.componentsMarkup;
       }
 
       if (plannerDecisions) {
@@ -1877,6 +2070,7 @@
     }
 
     function renderAll() {
+      plannerRuntime.setRecipeOptionsByType(buildPlannerRecipeOptionsByTypeFromGraph(state.graph));
       renderSnapshotMetrics();
       renderActiveTargetCard();
       renderCatalogTree();
@@ -1885,6 +2079,7 @@
       renderSummary();
       renderTree();
       renderProgress();
+      renderPlannerShell();
     }
 
     function setGraph(graph, sourceLabel) {
@@ -2138,6 +2333,16 @@
     }
 
     function handlePlannerLineEvent(event) {
+      const addButton = event.target.closest("[data-planner-add-type-id]");
+      if (addButton) {
+        plannerRuntime.addLine({
+          outputTypeId: Number(addButton.dataset.plannerAddTypeId),
+          quantity: 1,
+        });
+        renderPlannerShell();
+        return;
+      }
+
       const removeButton = event.target.closest("[data-planner-remove-line-id]");
       if (removeButton) {
         plannerRuntime.removeLine(removeButton.dataset.plannerRemoveLineId);
@@ -2153,6 +2358,10 @@
         );
         renderPlannerShell();
       }
+    }
+
+    function handlePlannerCatalogSearch() {
+      renderPlannerShell();
     }
 
     graphFileInput?.addEventListener("change", handleGraphFileSelection);
@@ -2178,6 +2387,8 @@
     modeCalculatorButton?.addEventListener("click", handleModeSwitch);
     modePlannerButton?.addEventListener("click", handleModeSwitch);
     plannerAddLine?.addEventListener("click", handlePlannerAddLine);
+    plannerCatalogSearch?.addEventListener("input", handlePlannerCatalogSearch);
+    plannerCatalogResults?.addEventListener("click", handlePlannerLineEvent);
     plannerLines?.addEventListener("click", handlePlannerLineEvent);
     plannerLines?.addEventListener("input", handlePlannerLineEvent);
 
@@ -2206,7 +2417,11 @@
     rollupDependencyTree,
     saveStoredPlanProgress,
     searchCraftableItems,
+    searchPlannerCatalog,
     shouldDataSectionBeOpen,
+    buildPlannerLineViewModels,
+    renderPlannerAggregatedOutputMarkup,
+    renderPlannerLinesMarkup,
     updateProgressInputValue,
     createPlannerRuntime,
   };

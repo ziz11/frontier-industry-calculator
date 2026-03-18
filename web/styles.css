@@ -178,10 +178,140 @@ h3 {
 
 .planner-line-row {
   display: grid;
-  grid-template-columns: 80px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) 110px auto;
   gap: 8px;
   align-items: center;
   margin-bottom: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px;
+  background: rgba(17, 23, 19, 0.7);
+}
+
+.planner-line-main {
+  display: grid;
+  gap: 4px;
+}
+
+.planner-line-type {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.planner-line-recipe {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.planner-line-recipe-empty {
+  font-style: italic;
+}
+
+.planner-line-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.planner-multi-recipe-badge {
+  border: 1px solid rgba(193, 255, 210, 0.35);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  color: #c6ffd6;
+  background: rgba(114, 202, 141, 0.12);
+}
+
+.planner-catalog-results {
+  margin-bottom: 10px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.planner-catalog-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.planner-catalog-result-label {
+  min-width: 0;
+}
+
+.planner-catalog-result-empty,
+.planner-empty-state {
+  color: var(--muted);
+}
+
+.planner-empty-state {
+  text-align: center;
+  padding: 28px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+}
+
+.planner-lines-head {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.planner-output-section {
+  margin-bottom: 10px;
+}
+
+.planner-output-section h3 {
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.planner-output-table {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.planner-output-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  padding: 6px 8px;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.planner-output-row + .planner-output-row {
+  border-top: 1px solid rgba(143, 173, 151, 0.2);
+}
+
+.planner-output-row > :first-child {
+  text-align: left;
+}
+
+.planner-output-row > :last-child {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.planner-output-row-head {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: transparent;
+}
+
+.planner-output-empty {
+  color: var(--muted);
+  border: 0;
+  border-top: 1px solid rgba(143, 173, 151, 0.2);
+  padding: 6px 8px;
+  font-size: 12px;
 }
 
 .workbench-sidebar,
