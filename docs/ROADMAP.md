@@ -21,7 +21,7 @@
 ## Phase 2
 
 - export current view
-- multi-target planning
+- multi-target planning (see `docs/PLANNER_IA_PLAN.md`)
 - broader inventory/progress model beyond direct components/raw materials
 
 ## Phase 3
