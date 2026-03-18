@@ -1201,6 +1201,157 @@
     return null;
   }
 
+  function getPlannerSupport() {
+    const fallback = {
+      createEmptyPlannerState(datasetFingerprint) {
+        return {
+          planLines: [],
+          recipeChoiceByType: {},
+          uiState: {},
+          datasetFingerprint,
+        };
+      },
+      savePlannerState() {},
+      loadPlannerState() {
+        return null;
+      },
+      computePlannerPlan() {
+        return {
+          rawMaterials: [],
+          components: [],
+          dependencyOutline: [],
+          totals: {
+            totalRuntime: 0,
+            totalMass: 0,
+            totalVolume: 0,
+          },
+          decisions: [],
+          decisionSummary: {
+            totalMultiPathItems: 0,
+            defaultCount: 0,
+            overriddenCount: 0,
+          },
+        };
+      },
+    };
+
+    if (typeof require !== "function") {
+      return fallback;
+    }
+
+    try {
+      const { createEmptyPlannerState } = require("./planner/state.js");
+      const { savePlannerState, loadPlannerState } = require("./planner/storage.js");
+      const { computePlannerPlan } = require("./planner/compute_plan.js");
+      return {
+        createEmptyPlannerState,
+        savePlannerState,
+        loadPlannerState,
+        computePlannerPlan,
+      };
+    } catch (_error) {
+      return fallback;
+    }
+  }
+
+  function createPlannerRuntime({
+    datasetFingerprint,
+    recipeOptionsByType = {},
+    expandDependencies = () => null,
+    plannerSupport = getPlannerSupport(),
+  }) {
+    const support = plannerSupport || getPlannerSupport();
+    const runtimeState = {
+      mode: "calculator",
+      plannerState: support.createEmptyPlannerState(datasetFingerprint),
+      plannerResult: {
+        rawMaterials: [],
+        components: [],
+        dependencyOutline: [],
+        totals: {
+          totalRuntime: 0,
+          totalMass: 0,
+          totalVolume: 0,
+        },
+        decisions: [],
+        decisionSummary: {
+          totalMultiPathItems: 0,
+          defaultCount: 0,
+          overriddenCount: 0,
+        },
+      },
+    };
+
+    function recompute() {
+      runtimeState.plannerResult = support.computePlannerPlan({
+        planLines: runtimeState.plannerState.planLines,
+        recipeChoiceByType: runtimeState.plannerState.recipeChoiceByType,
+        recipeOptionsByType,
+        expandDependencies,
+      });
+    }
+
+    function persist() {
+      support.savePlannerState(runtimeState.plannerState);
+    }
+
+    function load() {
+      const loaded = support.loadPlannerState(datasetFingerprint);
+      runtimeState.plannerState = loaded || support.createEmptyPlannerState(datasetFingerprint);
+      recompute();
+      return runtimeState.plannerState;
+    }
+
+    function addLine(nextLine = {}) {
+      const line = {
+        lineId: nextLine.lineId || `line-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        outputTypeId: Number(nextLine.outputTypeId) || 1,
+        quantity: Number(nextLine.quantity) || 1,
+      };
+      runtimeState.plannerState.planLines = runtimeState.plannerState.planLines.concat([line]);
+      recompute();
+      persist();
+      return line;
+    }
+
+    function updateLineQuantity(lineId, quantity) {
+      runtimeState.plannerState.planLines = runtimeState.plannerState.planLines.map((line) =>
+        line.lineId === lineId ? { ...line, quantity: Number(quantity) } : line,
+      );
+      recompute();
+      persist();
+    }
+
+    function removeLine(lineId) {
+      runtimeState.plannerState.planLines = runtimeState.plannerState.planLines.filter((line) => line.lineId !== lineId);
+      recompute();
+      persist();
+    }
+
+    function setMode(mode) {
+      runtimeState.mode = mode === "planner" ? "planner" : "calculator";
+    }
+
+    function getRenderModel() {
+      return {
+        mode: runtimeState.mode,
+        plannerState: runtimeState.plannerState,
+        plannerResult: runtimeState.plannerResult,
+      };
+    }
+
+    return {
+      addLine,
+      getRenderModel,
+      load,
+      persist,
+      recompute,
+      removeLine,
+      setMode,
+      updateLineQuantity,
+    };
+  }
+
   function bindBrowserApp() {
     const dataSection = document.getElementById("dataSection");
     const graphFileInput = document.getElementById("graphFile");
@@ -1235,6 +1386,15 @@
     const showRecipeDetailsToggle = document.getElementById("showRecipeDetailsToggle");
     const showBlueprintIdsToggle = document.getElementById("showBlueprintIdsToggle");
     const showTrackedStatusToggle = document.getElementById("showTrackedStatusToggle");
+    const modeCalculatorButton = document.getElementById("modeCalculator");
+    const modePlannerButton = document.getElementById("modePlanner");
+    const calculatorShell = document.getElementById("calculatorShell");
+    const plannerShell = document.getElementById("plannerShell");
+    const plannerLines = document.getElementById("plannerLines");
+    const plannerRawMaterials = document.getElementById("plannerRawMaterials");
+    const plannerComponents = document.getElementById("plannerComponents");
+    const plannerDecisions = document.getElementById("plannerDecisions");
+    const plannerAddLine = document.getElementById("plannerAddLine");
     const storage = getBrowserStorage();
 
     const state = {
@@ -1262,6 +1422,65 @@
       showBlueprintIds: true,
       showTrackedStatus: true,
     };
+    const plannerRuntime = createPlannerRuntime({
+      datasetFingerprint: "default",
+      recipeOptionsByType: {},
+      expandDependencies: () => null,
+    });
+
+    function renderPlannerShell() {
+      const model = plannerRuntime.getRenderModel();
+      const isPlanner = model.mode === "planner";
+      if (calculatorShell) {
+        calculatorShell.hidden = isPlanner;
+      }
+      if (plannerShell) {
+        plannerShell.hidden = !isPlanner;
+      }
+      if (modeCalculatorButton) {
+        modeCalculatorButton.setAttribute("aria-pressed", String(!isPlanner));
+      }
+      if (modePlannerButton) {
+        modePlannerButton.setAttribute("aria-pressed", String(isPlanner));
+      }
+
+      if (plannerLines) {
+        plannerLines.innerHTML = (model.plannerState.planLines || [])
+          .map(
+            (line) => `
+              <div class="planner-line-row" data-line-id="${line.lineId}">
+                <span>${line.outputTypeId}</span>
+                <input type="number" min="1" step="1" value="${line.quantity}" data-planner-quantity-line-id="${line.lineId}" />
+                <button type="button" class="mini-button" data-planner-remove-line-id="${line.lineId}">Remove</button>
+              </div>
+            `,
+          )
+          .join("");
+      }
+
+      if (plannerRawMaterials) {
+        const rawLines = model.plannerResult.rawMaterials || [];
+        plannerRawMaterials.textContent = rawLines.length
+          ? rawLines.map((entry) => `${entry.typeId}: ${entry.quantity}`).join("\n")
+          : "No raw materials";
+      }
+
+      if (plannerComponents) {
+        const componentLines = model.plannerResult.components || [];
+        plannerComponents.textContent = componentLines.length
+          ? componentLines.map((entry) => `${entry.typeId}: ${entry.quantity}`).join("\n")
+          : "No components";
+      }
+
+      if (plannerDecisions) {
+        const decisionLines = model.plannerResult.decisions || [];
+        plannerDecisions.textContent = decisionLines.length
+          ? decisionLines
+              .map((entry) => `type ${entry.typeId} · options ${entry.options.length} · ${entry.decisionState}`)
+              .join("\n")
+          : "No decisions";
+      }
+    }
 
     function getSelectedCatalogBranch() {
       if (!state.catalog || !state.selectedCatalogBranchKey || state.selectedCatalogBranchKey === "all") {
@@ -1904,6 +2123,38 @@
       renderTree();
     }
 
+    function handleModeSwitch(event) {
+      const button = event.target.closest("[data-mode]");
+      if (!button) {
+        return;
+      }
+      plannerRuntime.setMode(button.dataset.mode);
+      renderPlannerShell();
+    }
+
+    function handlePlannerAddLine() {
+      plannerRuntime.addLine({ outputTypeId: 1, quantity: 1 });
+      renderPlannerShell();
+    }
+
+    function handlePlannerLineEvent(event) {
+      const removeButton = event.target.closest("[data-planner-remove-line-id]");
+      if (removeButton) {
+        plannerRuntime.removeLine(removeButton.dataset.plannerRemoveLineId);
+        renderPlannerShell();
+        return;
+      }
+
+      const quantityInputNode = event.target.closest("[data-planner-quantity-line-id]");
+      if (quantityInputNode) {
+        plannerRuntime.updateLineQuantity(
+          quantityInputNode.dataset.plannerQuantityLineId,
+          quantityInputNode.value,
+        );
+        renderPlannerShell();
+      }
+    }
+
     graphFileInput?.addEventListener("change", handleGraphFileSelection);
     folderInput?.addEventListener("change", handleFolderSelection);
     iconZipInput?.addEventListener("change", handleIconZipSelection);
@@ -1924,7 +2175,14 @@
     showRecipeDetailsToggle?.addEventListener("change", handleTreeViewChange);
     showBlueprintIdsToggle?.addEventListener("change", handleTreeViewChange);
     showTrackedStatusToggle?.addEventListener("change", handleTreeViewChange);
+    modeCalculatorButton?.addEventListener("click", handleModeSwitch);
+    modePlannerButton?.addEventListener("click", handleModeSwitch);
+    plannerAddLine?.addEventListener("click", handlePlannerAddLine);
+    plannerLines?.addEventListener("click", handlePlannerLineEvent);
+    plannerLines?.addEventListener("input", handlePlannerLineEvent);
 
+    plannerRuntime.load();
+    renderPlannerShell();
     renderAll();
   }
 
@@ -1950,6 +2208,7 @@
     searchCraftableItems,
     shouldDataSectionBeOpen,
     updateProgressInputValue,
+    createPlannerRuntime,
   };
 
   if (typeof module !== "undefined" && module.exports) {
