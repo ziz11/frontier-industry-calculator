@@ -213,9 +213,20 @@
       <section id="plannerShell" class="planner-shell" hidden>
         <div data-testid="planner-left" class="planner-region">
           <div class="section-head">
-            <h2>Plan Lines</h2>
+            <h2>Plan Builder</h2>
             <button id="plannerAddLine" type="button" class="mini-button">Add line</button>
           </div>
+          <label class="search-label" for="plannerCatalogSearch">Catalog search</label>
+          <input
+            id="plannerCatalogSearch"
+            class="text-input"
+            type="search"
+            placeholder="Search craftable item or typeID"
+          />
+          <ol id="plannerCatalogResults" class="result-list planner-catalog-results">
+            <li class="planner-catalog-result-empty">Load data to search craftable items.</li>
+          </ol>
+          <div class="planner-lines-head">Plan lines</div>
           <div id="plannerLines"></div>
         </div>
         <div data-testid="planner-center" class="planner-region">
