@@ -13,10 +13,16 @@
           <p class="eyebrow">Offline Production Planner</p>
           <h1>Frontier Industry Calculator</h1>
         </div>
-        <div id="statusPill" class="status-pill">No data loaded</div>
+        <div class="top-bar-actions">
+          <div class="mode-switch" role="group" aria-label="Mode switch">
+            <button id="modeCalculator" type="button" class="mini-button" data-mode="calculator" aria-pressed="true">Calculator</button>
+            <button id="modePlanner" type="button" class="mini-button" data-mode="planner" aria-pressed="false">Planner</button>
+          </div>
+          <div id="statusPill" class="status-pill">No data loaded</div>
+        </div>
       </header>
 
-      <section class="workbench-layout">
+      <section id="calculatorShell" class="workbench-layout">
         <aside class="workbench-sidebar">
           <details id="dataSection" class="workbench-section data-section" open>
             <summary class="section-head">
@@ -202,6 +208,33 @@
             </div>
           </section>
         </aside>
+      </section>
+
+      <section id="plannerShell" class="planner-shell" hidden>
+        <div data-testid="planner-left" class="planner-region">
+          <div class="section-head">
+            <h2>Plan Lines</h2>
+            <button id="plannerAddLine" type="button" class="mini-button">Add line</button>
+          </div>
+          <div id="plannerLines"></div>
+        </div>
+        <div data-testid="planner-center" class="planner-region">
+          <div class="section-head">
+            <h2>Aggregated Output</h2>
+          </div>
+          <div>
+            <h3>Raw Materials</h3>
+            <div id="plannerRawMaterials"></div>
+            <h3>Components</h3>
+            <div id="plannerComponents"></div>
+          </div>
+        </div>
+        <div data-testid="planner-right" class="planner-region">
+          <div class="section-head">
+            <h2>Decisions</h2>
+          </div>
+          <div id="plannerDecisions"></div>
+        </div>
       </section>
     </main>
 
