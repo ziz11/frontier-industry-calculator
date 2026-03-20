@@ -2,12 +2,14 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  buildManagedDefaultRecipePresets,
   buildGraphFromStrippedData,
   buildDependencyTree,
   buildCatalogTree,
   buildPlanStorageKey,
   buildProgressSections,
   buildRecipeOptionLabel,
+  mergeManagedDefaultRecipeSelections,
   filterCatalogItems,
   getAvailableRecipesForType,
   getProgressStatus,
@@ -127,6 +129,96 @@ const sampleGraph = {
   baseMaterials: [100],
 };
 
+const managedDefaultGraph = {
+  meta: {
+    schemaVersion: 1,
+    snapshot: "managed.defaults.snapshot",
+    generatedAt: "2026-03-20T00:00:00Z",
+  },
+  items: {
+    500: { typeID: 500, name: "Reinforced Alloys", isBaseMaterial: false, isCraftable: true },
+    510: { typeID: 510, name: "Carbon Weave", isBaseMaterial: false, isCraftable: true },
+    520: { typeID: 520, name: "Thermal Composites", isBaseMaterial: false, isCraftable: true },
+    530: { typeID: 530, name: "Binder Matrix", isBaseMaterial: false, isCraftable: true },
+    900: { typeID: 900, name: "Raw Ore A", isBaseMaterial: true, isCraftable: false },
+  },
+  recipes: {
+    5001: {
+      blueprintID: 5001,
+      primaryTypeID: 500,
+      runTime: 5,
+      inputs: [{ typeID: 530, quantity: 2 }],
+      outputs: [{ typeID: 500, quantity: 1 }],
+    },
+    5002: {
+      blueprintID: 5002,
+      primaryTypeID: 500,
+      runTime: 6,
+      inputs: [{ typeID: 530, quantity: 2 }],
+      outputs: [{ typeID: 500, quantity: 1 }],
+    },
+    5101: {
+      blueprintID: 5101,
+      primaryTypeID: 510,
+      runTime: 5,
+      inputs: [{ typeID: 530, quantity: 1 }],
+      outputs: [{ typeID: 510, quantity: 1 }],
+    },
+    5102: {
+      blueprintID: 5102,
+      primaryTypeID: 510,
+      runTime: 6,
+      inputs: [{ typeID: 530, quantity: 1 }],
+      outputs: [{ typeID: 510, quantity: 1 }],
+    },
+    5201: {
+      blueprintID: 5201,
+      primaryTypeID: 520,
+      runTime: 5,
+      inputs: [{ typeID: 530, quantity: 3 }],
+      outputs: [{ typeID: 520, quantity: 1 }],
+    },
+    5202: {
+      blueprintID: 5202,
+      primaryTypeID: 520,
+      runTime: 6,
+      inputs: [{ typeID: 530, quantity: 3 }],
+      outputs: [{ typeID: 520, quantity: 1 }],
+    },
+    5301: {
+      blueprintID: 5301,
+      primaryTypeID: 530,
+      runTime: 4,
+      inputs: [{ typeID: 900, quantity: 2 }],
+      outputs: [{ typeID: 530, quantity: 1 }],
+    },
+    5302: {
+      blueprintID: 5302,
+      primaryTypeID: 530,
+      runTime: 3,
+      inputs: [{ typeID: 900, quantity: 1 }],
+      outputs: [{ typeID: 530, quantity: 1 }],
+    },
+  },
+  recipesByOutput: {
+    500: [5001, 5002],
+    510: [5101, 5102],
+    520: [5201, 5202],
+    530: [5301, 5302],
+  },
+  recipeFacilityPrefixesByBlueprint: {
+    5001: ["M"],
+    5002: ["S"],
+    5101: ["L"],
+    5102: ["S"],
+    5201: ["P"],
+    5202: ["S"],
+    5301: ["M"],
+    5302: ["S"],
+  },
+  baseMaterials: [900],
+};
+
 test("searchCraftableItems returns matching craftable outputs sorted by exactness", () => {
   const results = searchCraftableItems(sampleGraph, "comp");
 
@@ -216,6 +308,35 @@ test("getAvailableRecipesForType and resolveRecipeChoice expose and select alter
   assert.equal(resolveRecipeChoice(sampleGraph, 200, {}).blueprintID, 1000);
   assert.equal(resolveRecipeChoice(graphWithPrefixPriority, 200, {}).blueprintID, 1002);
   assert.equal(resolveRecipeChoice(sampleGraph, 200, { 200: 1002 }).blueprintID, 1002);
+});
+
+test("buildManagedDefaultRecipePresets initializes managed roots with S-preferring recipe trees", () => {
+  const presets = buildManagedDefaultRecipePresets(managedDefaultGraph, {});
+
+  assert.deepEqual(presets.map((preset) => preset.name), [
+    "Reinforced Alloys",
+    "Carbon Weave",
+    "Thermal Composites",
+  ]);
+  assert.equal(presets[0].typeID, 500);
+  assert.equal(presets[0].recipeSelections[500], 5002);
+  assert.equal(presets[1].recipeSelections[510], 5102);
+  assert.equal(presets[2].recipeSelections[520], 5202);
+  assert.equal(presets[0].recipeSelections[530], 5302);
+});
+
+test("mergeManagedDefaultRecipeSelections preserves isolated stored overrides per managed root", () => {
+  const presets = buildManagedDefaultRecipePresets(managedDefaultGraph, {
+    "reinforced-alloys": { 500: 5001 },
+    "carbon-weave": { 510: 5101, 530: 5301 },
+  });
+
+  assert.deepEqual(mergeManagedDefaultRecipeSelections(presets), {
+    500: 5001,
+    510: 5101,
+    520: 5202,
+    530: 5301,
+  });
 });
 
 test("createRecipeSummary handles ceil runs and preserves byproducts for multi-output recipes", () => {
@@ -556,6 +677,30 @@ test("renderDependencyOutlineMarkup includes facility prefix in recipe choice pi
 
   assert.match(markup, /\[L\] out 2 · 6s/);
   assert.doesNotMatch(markup, /BP 1000/);
+});
+
+test("renderDependencyOutlineMarkup keeps facility prefix visible for single-recipe rows without recipe details", () => {
+  const graphWithPrefixes = {
+    ...sampleGraph,
+    recipeFacilityPrefixesByBlueprint: {
+      1000: ["M"],
+      1001: ["S"],
+      1002: ["L"],
+      2000: ["P"],
+    },
+  };
+  const tree = buildDependencyTree(graphWithPrefixes, 400, 1, {});
+  const markup = renderDependencyOutlineMarkup(tree, new Map(), {
+    hideCovered: false,
+    maxDepth: null,
+    showRecipeDetails: false,
+    showTrackedStatus: true,
+    expandedNodeIds: new Set([tree.nodeId, ...tree.children.map((child) => child.nodeId)]),
+    graph: graphWithPrefixes,
+  });
+
+  assert.match(markup, /\[P\]/);
+  assert.match(markup, /\[S\]/);
 });
 
 test("buildDependencyTree stops recursion on cyclic dependencies", () => {

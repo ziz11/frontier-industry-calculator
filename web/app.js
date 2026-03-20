@@ -51,6 +51,12 @@
   }
 
   const FACILITY_PREFIX_ORDER = ["L", "M", "S", "P"];
+  const MANAGED_DEFAULT_RECIPE_STORAGE_KEY = "frontier-industry-calculator:managed-default-recipes:v1";
+  const MANAGED_DEFAULT_RECIPE_ROOTS = [
+    { key: "reinforced-alloys", name: "Reinforced Alloys", preferredPrefixes: ["S"] },
+    { key: "carbon-weave", name: "Carbon Weave", preferredPrefixes: ["S"] },
+    { key: "thermal-composites", name: "Thermal Composites", preferredPrefixes: ["S"] },
+  ];
   const KNOWN_FACILITY_PREFIX_BY_TYPE_ID = {
     87119: "S", // Mini Printer
     87120: "L", // Heavy Printer
@@ -151,6 +157,182 @@
       [];
     const prefixes = toOrderedFacilityPrefixes(rawPrefixes);
     return prefixes.length ? `[${prefixes.join("/")}]` : "";
+  }
+
+  function normalizeManagedDefaultRecipeSelectionMap(graph, selections = {}) {
+    const normalized = {};
+    for (const [typeID, recipeID] of Object.entries(selections || {})) {
+      const safeTypeID = Number(typeID);
+      const safeRecipeID = Number(recipeID);
+      if (!Number.isFinite(safeTypeID) || !Number.isFinite(safeRecipeID)) {
+        continue;
+      }
+
+      const recipe = getRecipe(graph, safeRecipeID);
+      if (!recipe) {
+        continue;
+      }
+
+      const availableRecipes = getAvailableRecipesForType(graph, safeTypeID);
+      if (!availableRecipes.some((candidate) => Number(candidate.blueprintID) === safeRecipeID)) {
+        continue;
+      }
+      normalized[safeTypeID] = safeRecipeID;
+    }
+    return normalized;
+  }
+
+  function findPreferredRecipe(graph, typeID, preferredPrefixes = ["S"]) {
+    const availableRecipes = getAvailableRecipesForType(graph, typeID);
+    if (!availableRecipes.length) {
+      return null;
+    }
+
+    const normalizedPreferredPrefixes = (Array.isArray(preferredPrefixes) ? preferredPrefixes : [])
+      .map((entry) => String(entry || "").trim())
+      .filter(Boolean);
+
+    for (const prefix of normalizedPreferredPrefixes) {
+      const preferredRecipe = availableRecipes.find((recipe) => {
+        const prefixes =
+          graph?.recipeFacilityPrefixesByBlueprint?.[recipe.blueprintID] ??
+          graph?.recipeFacilityPrefixesByBlueprint?.[String(recipe.blueprintID)] ??
+          [];
+        return toOrderedFacilityPrefixes(prefixes).includes(prefix);
+      });
+      if (preferredRecipe) {
+        return preferredRecipe;
+      }
+    }
+
+    return availableRecipes[0];
+  }
+
+  function buildPreferredRecipeSelections(graph, typeID, preferredPrefixes = ["S"], selections = {}, activePath = new Set()) {
+    const safeTypeID = Number(typeID);
+    if (!graph || !Number.isFinite(safeTypeID) || activePath.has(safeTypeID)) {
+      return selections;
+    }
+
+    const recipe = findPreferredRecipe(graph, safeTypeID, preferredPrefixes);
+    if (!recipe) {
+      return selections;
+    }
+
+    selections[safeTypeID] = Number(recipe.blueprintID);
+    activePath.add(safeTypeID);
+    for (const input of recipe.inputs || []) {
+      buildPreferredRecipeSelections(graph, input.typeID, preferredPrefixes, selections, activePath);
+    }
+    activePath.delete(safeTypeID);
+    return selections;
+  }
+
+  function getManagedDefaultRecipeRootItem(graph, name) {
+    return Object.values(graph?.items || {}).find(
+      (item) => String(item?.name || "").trim().toLowerCase() === String(name || "").trim().toLowerCase(),
+    ) ?? null;
+  }
+
+  function buildManagedDefaultRecipePresets(graph, storedSelectionsByRoot = {}) {
+    if (!graph) {
+      return [];
+    }
+
+    return MANAGED_DEFAULT_RECIPE_ROOTS
+      .map((definition) => {
+        const item = getManagedDefaultRecipeRootItem(graph, definition.name);
+        if (!item) {
+          return null;
+        }
+
+        const autoRecipeSelections = buildPreferredRecipeSelections(graph, item.typeID, definition.preferredPrefixes);
+        const storedRecipeSelections = normalizeManagedDefaultRecipeSelectionMap(
+          graph,
+          storedSelectionsByRoot?.[definition.key] || {},
+        );
+        const recipeSelections = {
+          ...autoRecipeSelections,
+          ...storedRecipeSelections,
+        };
+        const tree = buildDependencyTree(graph, item.typeID, 1, recipeSelections);
+        const rootRecipe = resolveRecipeChoice(graph, item.typeID, recipeSelections);
+
+        return {
+          ...definition,
+          item,
+          typeID: Number(item.typeID),
+          autoRecipeSelections,
+          storedRecipeSelections,
+          recipeSelections,
+          tree,
+          rootRecipe,
+          isCustomized:
+            serializeRecipeSelections(storedRecipeSelections) !== "" &&
+            serializeRecipeSelections(storedRecipeSelections) !== serializeRecipeSelections(autoRecipeSelections),
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function mergeManagedDefaultRecipeSelections(presets = []) {
+    const merged = {};
+    for (const preset of Array.isArray(presets) ? presets : []) {
+      for (const [typeID, recipeID] of Object.entries(preset?.autoRecipeSelections || {})) {
+        if (!(typeID in merged)) {
+          merged[typeID] = recipeID;
+        }
+      }
+    }
+    for (const preset of Array.isArray(presets) ? presets : []) {
+      Object.assign(merged, preset?.storedRecipeSelections || {});
+    }
+    return merged;
+  }
+
+  function loadStoredManagedDefaultRecipePresets(storage) {
+    if (!storage || typeof storage.getItem !== "function") {
+      return {};
+    }
+
+    try {
+      const raw = storage.getItem(MANAGED_DEFAULT_RECIPE_STORAGE_KEY);
+      if (!raw) {
+        return {};
+      }
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (_error) {
+      return {};
+    }
+  }
+
+  function saveStoredManagedDefaultRecipePresets(storage, presetsByRoot = {}) {
+    if (!storage || typeof storage.setItem !== "function") {
+      return;
+    }
+
+    const normalized = {};
+    for (const [rootKey, selections] of Object.entries(presetsByRoot || {})) {
+      const serializedSelections = serializeRecipeSelections(selections);
+      if (!serializedSelections) {
+        continue;
+      }
+      normalized[rootKey] = Object.entries(selections || {}).reduce((accumulator, [typeID, recipeID]) => {
+        const safeTypeID = Number(typeID);
+        const safeRecipeID = Number(recipeID);
+        if (Number.isFinite(safeTypeID) && Number.isFinite(safeRecipeID)) {
+          accumulator[safeTypeID] = safeRecipeID;
+        }
+        return accumulator;
+      }, {});
+    }
+
+    try {
+      storage.setItem(MANAGED_DEFAULT_RECIPE_STORAGE_KEY, JSON.stringify(normalized));
+    } catch (_error) {
+      // ignore storage failures for static local mode
+    }
   }
 
   function buildGraphFromStrippedData(snapshot, typesData, blueprintsData, facilitiesData = null) {
@@ -1397,7 +1579,13 @@
       activeRecipeChooserTypeID = null,
       graph = null,
       expandedNodeIds = new Set(),
+      interactionScope = "outline",
+      interactionRootKey = "",
     } = options;
+    const toggleNodeAttribute = `data-${interactionScope}-toggle-node-id`;
+    const recipeToggleAttribute = `data-${interactionScope}-recipe-toggle-type-id`;
+    const recipeSelectAttribute = `data-${interactionScope}-recipe-type-id`;
+    const rootKeyAttribute = interactionRootKey ? `data-${interactionScope}-root-key="${escapeHtml(interactionRootKey)}"` : "";
 
     function getTrackedPercent(trackedLine) {
       const rawValue = Number(
@@ -1433,6 +1621,7 @@
       const recipeCount = node.availableRecipes?.length || 0;
       const showRecipeChooser = recipeCount > 1 && Number(activeRecipeChooserTypeID) === Number(node.typeID);
       const trackedPercent = trackedLine ? getTrackedPercent(trackedLine) : 0;
+      const sizeTag = node.recipe && graph ? getRecipeFacilityPrefixTag(graph, node.recipe) : "";
       const rowClasses = [
         "outline-row",
         recipeCount > 1 ? "has-alternates" : "",
@@ -1440,19 +1629,31 @@
       const pillMarkup = [];
 
       if (recipeCount > 1) {
+        if (sizeTag && interactionScope === "default-preset") {
+          pillMarkup.push(`<span class="outline-pill outline-pill-size">${escapeHtml(sizeTag)}</span>`);
+        }
         pillMarkup.push(`
           <button
             type="button"
             class="outline-pill outline-pill-alt outline-recipe-toggle${showRecipeChooser ? " is-open" : ""}"
-            data-outline-recipe-toggle-type-id="${node.typeID}"
+            ${recipeToggleAttribute}="${node.typeID}"
+            ${rootKeyAttribute}
             aria-label="Choose recipe for ${escapeHtml(node.item.name)}"
           >
             ${formatNumber(recipeCount)} recipes
           </button>
         `);
         pillMarkup.push(
-          `<span class="outline-pill outline-pill-choice">${escapeHtml(buildRecipeChoiceSummary(node.recipe, node.typeID, graph))}</span>`,
+          `<span class="outline-pill outline-pill-choice">${
+            escapeHtml(
+              interactionScope === "default-preset" && sizeTag
+                ? buildRecipeChoiceSummary(node.recipe, node.typeID, null)
+                : buildRecipeChoiceSummary(node.recipe, node.typeID, graph),
+            )
+          }</span>`,
         );
+      } else if (sizeTag) {
+        pillMarkup.push(`<span class="outline-pill outline-pill-size">${escapeHtml(sizeTag)}</span>`);
       }
 
       if (showRecipeDetails && node.recipe) {
@@ -1481,7 +1682,7 @@
           <div class="outline-recipe-chooser" data-depth="${node.depth}" style="--depth:${node.depth}">
             <label class="outline-recipe-label">
               <span class="visually-hidden">Recipe for ${escapeHtml(node.item.name)}</span>
-              <select class="text-input outline-recipe-select" data-outline-recipe-type-id="${node.typeID}">
+              <select class="text-input outline-recipe-select" ${recipeSelectAttribute}="${node.typeID}" ${rootKeyAttribute}>
                 ${node.availableRecipes.map((recipe) => `
                   <option value="${recipe.blueprintID}" ${Number(recipe.blueprintID) === Number(node.recipe?.blueprintID) ? "selected" : ""}>
                     ${escapeHtml(buildRecipeOptionLabel(graph, recipe, node.typeID))}
@@ -1507,7 +1708,8 @@
           <button
             type="button"
             class="outline-toggle${canExpand ? "" : " is-disabled"}"
-            data-toggle-node-id="${node.nodeId}"
+            ${toggleNodeAttribute}="${node.nodeId}"
+            ${rootKeyAttribute}
             aria-expanded="${canExpand ? String(isExpanded) : "false"}"
             aria-label="${canExpand ? `${isExpanded ? "Collapse" : "Expand"} ${escapeHtml(node.item.name)}` : `${escapeHtml(node.item.name)} has no child dependencies`}"
             ${canExpand ? "" : "disabled"}
@@ -2304,6 +2506,9 @@
     const summaryMeta = document.getElementById("summaryMeta");
     const summaryRecipeField = document.getElementById("summaryRecipeField");
     const summaryRecipeSelect = document.getElementById("summaryRecipeSelect");
+    const defaultRecipePresetsSection = document.getElementById("defaultRecipePresetsSection");
+    const defaultRecipePresetsMeta = document.getElementById("defaultRecipePresetsMeta");
+    const defaultRecipePresetsList = document.getElementById("defaultRecipePresetsList");
     const rawMaterialsPreview = document.getElementById("rawMaterialsPreview");
     const componentsPreview = document.getElementById("componentsPreview");
     const rawMaterialsCount = document.getElementById("rawMaterialsCount");
@@ -2340,6 +2545,12 @@
       selectedTypeID: null,
       requestedQuantity: 1,
       recipeSelections: {},
+      managedDefaultRecipePresets: [],
+      managedDefaultStoredSelections: loadStoredManagedDefaultRecipePresets(storage),
+      managedDefaultExpandedPresetKeys: new Set(),
+      managedDefaultExpandedNodeIdsByRoot: {},
+      activeManagedDefaultRecipeChooserTypeID: null,
+      activeManagedDefaultRecipeChooserRootKey: null,
       expandedNodeIds: new Set(),
       currentTree: null,
       currentRollup: null,
@@ -2483,6 +2694,44 @@
       saveStoredPlanProgress(storage, state.currentPlanKey, state.progressByTypeID);
     }
 
+    function syncManagedDefaultPresetState() {
+      state.managedDefaultRecipePresets = buildManagedDefaultRecipePresets(
+        state.graph,
+        state.managedDefaultStoredSelections,
+      );
+      const nextExpandedNodeIdsByRoot = {};
+      for (const preset of state.managedDefaultRecipePresets) {
+        const previousExpandedNodeIds = state.managedDefaultExpandedNodeIdsByRoot[preset.key];
+        const validNodeIds = new Set(collectExpandableNodeIds(preset.tree));
+        const normalizedExpandedNodeIds = previousExpandedNodeIds
+          ? new Set(Array.from(previousExpandedNodeIds).filter((nodeId) => validNodeIds.has(nodeId)))
+          : getDefaultExpandedNodeIds(preset.tree);
+        if (!normalizedExpandedNodeIds.size) {
+          nextExpandedNodeIdsByRoot[preset.key] = getDefaultExpandedNodeIds(preset.tree);
+        } else {
+          nextExpandedNodeIdsByRoot[preset.key] = normalizedExpandedNodeIds;
+        }
+      }
+      state.managedDefaultExpandedNodeIdsByRoot = nextExpandedNodeIdsByRoot;
+      state.managedDefaultExpandedPresetKeys = new Set(
+        Array.from(state.managedDefaultExpandedPresetKeys).filter((rootKey) =>
+          state.managedDefaultRecipePresets.some((preset) => preset.key === rootKey),
+        ),
+      );
+      if (!state.managedDefaultRecipePresets.some((preset) => preset.key === state.activeManagedDefaultRecipeChooserRootKey)) {
+        state.activeManagedDefaultRecipeChooserRootKey = null;
+        state.activeManagedDefaultRecipeChooserTypeID = null;
+      }
+    }
+
+    function getManagedDefaultPresetByKey(rootKey) {
+      return state.managedDefaultRecipePresets.find((preset) => preset.key === rootKey) ?? null;
+    }
+
+    function persistManagedDefaultPresetSelections() {
+      saveStoredManagedDefaultRecipePresets(storage, state.managedDefaultStoredSelections);
+    }
+
     function setStatus(text, tone) {
       if (!statusPill) {
         return;
@@ -2622,6 +2871,84 @@
           `;
 
       hydrateIcons(selectedItemCard, state.iconArchive);
+    }
+
+    function renderManagedDefaultRecipePresets() {
+      if (!defaultRecipePresetsList || !defaultRecipePresetsMeta || !defaultRecipePresetsSection) {
+        return;
+      }
+
+      if (!state.graph) {
+        defaultRecipePresetsSection.open = false;
+        defaultRecipePresetsMeta.textContent = "No dataset";
+        defaultRecipePresetsList.innerHTML = `
+          <p class="result-empty">Load data to configure global recipe defaults.</p>
+        `;
+        return;
+      }
+
+      if (!state.managedDefaultRecipePresets.length) {
+        defaultRecipePresetsSection.open = false;
+        defaultRecipePresetsMeta.textContent = "Unavailable";
+        defaultRecipePresetsList.innerHTML = `
+          <p class="result-empty">This dataset does not expose Reinforced Alloys, Carbon Weave, and Thermal Composites together.</p>
+        `;
+        return;
+      }
+
+      defaultRecipePresetsMeta.textContent = `${formatNumber(state.managedDefaultRecipePresets.length)} managed`;
+      defaultRecipePresetsList.innerHTML = state.managedDefaultRecipePresets
+        .map((preset) => {
+          const isOpen = state.managedDefaultExpandedPresetKeys.has(preset.key);
+          const rootPrefixTag = getRecipeFacilityPrefixTag(state.graph, preset.rootRecipe) || "Base";
+          const treeMarkup = isOpen
+            ? renderDependencyOutlineMarkup(preset.tree, new Map(), {
+                graph: state.graph,
+                showRecipeDetails: false,
+                showTrackedStatus: false,
+                activeRecipeChooserTypeID:
+                  state.activeManagedDefaultRecipeChooserRootKey === preset.key
+                    ? state.activeManagedDefaultRecipeChooserTypeID
+                    : null,
+                expandedNodeIds: state.managedDefaultExpandedNodeIdsByRoot[preset.key] || getDefaultExpandedNodeIds(preset.tree),
+                interactionScope: "default-preset",
+                interactionRootKey: preset.key,
+              })
+            : "";
+
+          return `
+            <section class="managed-default-card${isOpen ? " is-open" : ""}">
+              <button
+                type="button"
+                class="managed-default-summary"
+                data-managed-default-card-key="${preset.key}"
+                aria-expanded="${String(isOpen)}"
+              >
+                <span class="managed-default-summary-main">
+                  ${renderItemMarkup(preset.name, preset.typeID)}
+                  <span class="managed-default-summary-copy">
+                    <span class="managed-default-summary-line">${escapeHtml(rootPrefixTag)} path</span>
+                    <span class="managed-default-summary-line managed-default-summary-line-muted">
+                      ${preset.isCustomized ? "Custom path" : "Auto S preset"}
+                    </span>
+                  </span>
+                </span>
+                <span class="managed-default-summary-side">
+                  <span class="managed-default-caret">${isOpen ? "−" : "+"}</span>
+                </span>
+              </button>
+              ${isOpen
+                ? `
+                  <div class="managed-default-body">
+                    <div class="managed-default-tree">${treeMarkup}</div>
+                  </div>
+                `
+                : ""}
+            </section>
+          `;
+        })
+        .join("");
+      hydrateIcons(defaultRecipePresetsList, state.iconArchive);
     }
 
     function renderSearchResults() {
@@ -2892,6 +3219,7 @@
       renderActiveTargetCard();
       renderCatalogTree();
       renderSelectedItemCard();
+      renderManagedDefaultRecipePresets();
       renderSearchResults();
       renderSummary();
       renderTree();
@@ -2902,11 +3230,12 @@
     function setGraph(graph, sourceLabel) {
       state.graph = graph;
       state.catalog = buildCatalogTree(graph);
+      syncManagedDefaultPresetState();
       state.selectedCatalogBranchKey = "all";
       state.searchQuery = "";
       state.selectedTypeID = null;
       state.requestedQuantity = 1;
-      state.recipeSelections = {};
+      state.recipeSelections = mergeManagedDefaultRecipeSelections(state.managedDefaultRecipePresets);
       state.activeRecipeChooserTypeID = null;
       state.expandedNodeIds = new Set();
       state.currentTree = null;
@@ -3016,7 +3345,7 @@
       }
 
       state.selectedTypeID = Number(button.dataset.typeId);
-      state.recipeSelections = {};
+      state.recipeSelections = mergeManagedDefaultRecipeSelections(state.managedDefaultRecipePresets);
       state.activeRecipeChooserTypeID = null;
       state.requestedQuantity = normalizeQuantity(quantityInput?.value || 1);
       recomputeCalculation(true);
@@ -3041,6 +3370,26 @@
       renderSummary();
       renderTree();
       renderProgress();
+    }
+
+    function handleManagedDefaultRecipeSelection(rootKey, typeID, recipeID) {
+      const preset = getManagedDefaultPresetByKey(rootKey);
+      if (!preset) {
+        return;
+      }
+
+      state.managedDefaultStoredSelections = {
+        ...state.managedDefaultStoredSelections,
+        [rootKey]: {
+          ...preset.recipeSelections,
+          [Number(typeID)]: Number(recipeID),
+        },
+      };
+      persistManagedDefaultPresetSelections();
+      syncManagedDefaultPresetState();
+      state.activeManagedDefaultRecipeChooserRootKey = null;
+      state.activeManagedDefaultRecipeChooserTypeID = null;
+      renderManagedDefaultRecipePresets();
     }
 
     function handleTreeClick(event) {
@@ -3080,6 +3429,51 @@
       }
     }
 
+    function handleManagedDefaultPresetClick(event) {
+      const target = getEventTargetElement(event);
+      const cardToggle = target?.closest("[data-managed-default-card-key]");
+      if (cardToggle) {
+        const rootKey = cardToggle.dataset.managedDefaultCardKey;
+        if (state.managedDefaultExpandedPresetKeys.has(rootKey)) {
+          state.managedDefaultExpandedPresetKeys.delete(rootKey);
+        } else {
+          state.managedDefaultExpandedPresetKeys.add(rootKey);
+        }
+        renderManagedDefaultRecipePresets();
+        return;
+      }
+
+      const recipeToggleButton = target?.closest("[data-default-preset-recipe-toggle-type-id]");
+      if (recipeToggleButton) {
+        const rootKey = recipeToggleButton.dataset.defaultPresetRootKey || "";
+        const typeID = Number(recipeToggleButton.dataset.defaultPresetRecipeToggleTypeId);
+        const isSameTarget =
+          state.activeManagedDefaultRecipeChooserRootKey === rootKey &&
+          Number(state.activeManagedDefaultRecipeChooserTypeID) === typeID;
+        state.activeManagedDefaultRecipeChooserRootKey = isSameTarget ? null : rootKey;
+        state.activeManagedDefaultRecipeChooserTypeID = isSameTarget ? null : typeID;
+        renderManagedDefaultRecipePresets();
+        return;
+      }
+
+      const toggleButton = target?.closest("[data-default-preset-toggle-node-id]");
+      if (!toggleButton) {
+        return;
+      }
+
+      const rootKey = toggleButton.dataset.defaultPresetRootKey || "";
+      const nodeId = toggleButton.dataset.defaultPresetToggleNodeId;
+      if (!state.managedDefaultExpandedNodeIdsByRoot[rootKey]) {
+        state.managedDefaultExpandedNodeIdsByRoot[rootKey] = new Set();
+      }
+      if (state.managedDefaultExpandedNodeIdsByRoot[rootKey].has(nodeId)) {
+        state.managedDefaultExpandedNodeIdsByRoot[rootKey].delete(nodeId);
+      } else {
+        state.managedDefaultExpandedNodeIdsByRoot[rootKey].add(nodeId);
+      }
+      renderManagedDefaultRecipePresets();
+    }
+
     function handleOutlineRecipeChange(event) {
       const target = getEventTargetElement(event);
       const select = target?.closest("[data-outline-recipe-type-id]");
@@ -3087,6 +3481,19 @@
         return;
       }
       handleRecipeSelection(Number(select.dataset.outlineRecipeTypeId), select.value);
+    }
+
+    function handleManagedDefaultRecipeChange(event) {
+      const target = getEventTargetElement(event);
+      const select = target?.closest("[data-default-preset-recipe-type-id]");
+      if (!select) {
+        return;
+      }
+      handleManagedDefaultRecipeSelection(
+        select.dataset.defaultPresetRootKey || "",
+        Number(select.dataset.defaultPresetRecipeTypeId),
+        select.value,
+      );
     }
 
     function handleSummaryRecipeChange(event) {
@@ -3244,6 +3651,8 @@
     searchResults?.addEventListener("click", handleSearchSelection);
     quantityInput?.addEventListener("input", handleQuantityInput);
     summaryRecipeSelect?.addEventListener("change", handleSummaryRecipeChange);
+    defaultRecipePresetsList?.addEventListener("click", handleManagedDefaultPresetClick);
+    defaultRecipePresetsList?.addEventListener("change", handleManagedDefaultRecipeChange);
     treePreview?.addEventListener("click", handleTreeClick);
     treePreview?.addEventListener("change", handleOutlineRecipeChange);
     summaryRail?.addEventListener("click", handleTreeClick);
@@ -3279,6 +3688,7 @@
     buildCatalogTree,
     buildGraphFromStrippedData,
     buildDependencyTree,
+    buildManagedDefaultRecipePresets,
     buildPlanStorageKey,
     buildProgressSections,
     buildRecipeOptionLabel,
@@ -3288,6 +3698,7 @@
     getAvailableRecipesForType,
     getProgressStatus,
     loadStoredPlanProgress,
+    mergeManagedDefaultRecipeSelections,
     renderDependencyOutlineMarkup,
     renderProgressTableMarkup,
     renderSelectedTargetMarkup,
