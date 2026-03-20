@@ -40,7 +40,120 @@
       .sort((left, right) => left[0] - right[0]);
   }
 
-  function buildGraphFromStrippedData(snapshot, typesData, blueprintsData) {
+  function resolveItemName(record, typeId) {
+    for (const key of ["name", "typeName_en-us", "typeName_en", "typeName"]) {
+      const value = record?.[key];
+      if (typeof value === "string" && value.trim()) {
+        return value;
+      }
+    }
+    return `Type ${typeId}`;
+  }
+
+  const FACILITY_PREFIX_ORDER = ["L", "M", "S", "P"];
+  const KNOWN_FACILITY_PREFIX_BY_TYPE_ID = {
+    87119: "S", // Mini Printer
+    87120: "L", // Heavy Printer
+    87161: "P", // Field Refinery
+    87162: "P", // Field Printer
+    88063: "M", // Refinery
+    88064: "L", // Heavy Refinery
+    88067: "M", // Printer
+    88068: "M", // Assembler
+    88069: "S", // Mini Berth
+    88070: "M", // Berth
+    88071: "L", // Heavy Berth
+    91978: "P", // Nursery
+  };
+
+  function toOrderedFacilityPrefixes(prefixes = []) {
+    const unique = Array.from(new Set((Array.isArray(prefixes) ? prefixes : []).map((entry) => String(entry || "").trim())));
+    return unique
+      .filter((entry) => FACILITY_PREFIX_ORDER.includes(entry))
+      .sort((left, right) => FACILITY_PREFIX_ORDER.indexOf(left) - FACILITY_PREFIX_ORDER.indexOf(right));
+  }
+
+  function inferFacilityPrefixFromName(name) {
+    const normalized = String(name || "").toLowerCase();
+    if (!normalized) {
+      return null;
+    }
+    if (normalized.includes("portable") || normalized.includes("field")) {
+      return "P";
+    }
+    if (normalized.includes("mini")) {
+      return "S";
+    }
+    if (normalized.includes("heavy")) {
+      return "L";
+    }
+    if (
+      normalized.includes("refinery") ||
+      normalized.includes("printer") ||
+      normalized.includes("assembler") ||
+      normalized.includes("berth") ||
+      normalized.includes("shipyard")
+    ) {
+      return "M";
+    }
+    return null;
+  }
+
+  function resolveFacilityPrefix(typeId, typesData = {}) {
+    const known = KNOWN_FACILITY_PREFIX_BY_TYPE_ID[Number(typeId)];
+    if (known) {
+      return known;
+    }
+
+    const record = typesData?.[typeId] ?? typesData?.[String(typeId)] ?? null;
+    const facilityName = record?.["typeName_en-us"] ?? record?.name ?? "";
+    return inferFacilityPrefixFromName(facilityName);
+  }
+
+  function buildRecipeFacilityPrefixesByBlueprint(typesData = {}, facilitiesData = {}) {
+    const prefixesByBlueprint = {};
+
+    for (const [facilityTypeId, facilityRecord] of sortedNumericEntries(facilitiesData)) {
+      const prefix = resolveFacilityPrefix(facilityTypeId, typesData);
+      if (!prefix) {
+        continue;
+      }
+
+      for (const blueprintRef of facilityRecord?.blueprints || []) {
+        const blueprintId = Number(blueprintRef?.blueprintID);
+        if (!Number.isFinite(blueprintId)) {
+          continue;
+        }
+
+        if (!prefixesByBlueprint[blueprintId]) {
+          prefixesByBlueprint[blueprintId] = [];
+        }
+        prefixesByBlueprint[blueprintId].push(prefix);
+      }
+    }
+
+    for (const blueprintId of Object.keys(prefixesByBlueprint)) {
+      prefixesByBlueprint[blueprintId] = toOrderedFacilityPrefixes(prefixesByBlueprint[blueprintId]);
+    }
+
+    return prefixesByBlueprint;
+  }
+
+  function getRecipeFacilityPrefixTag(graph, recipe) {
+    const blueprintId = Number(recipe?.blueprintID);
+    if (!Number.isFinite(blueprintId)) {
+      return "";
+    }
+
+    const rawPrefixes =
+      graph?.recipeFacilityPrefixesByBlueprint?.[blueprintId] ??
+      graph?.recipeFacilityPrefixesByBlueprint?.[String(blueprintId)] ??
+      [];
+    const prefixes = toOrderedFacilityPrefixes(rawPrefixes);
+    return prefixes.length ? `[${prefixes.join("/")}]` : "";
+  }
+
+  function buildGraphFromStrippedData(snapshot, typesData, blueprintsData, facilitiesData = null) {
     const recipes = {};
     const recipesByOutput = {};
     const craftableTypeIds = new Set();
@@ -90,7 +203,7 @@
 
       items[typeId] = {
         typeID: toNumber(record.typeID) ?? typeId,
-        name: record.name ?? `Type ${typeId}`,
+        name: resolveItemName(record, typeId),
         groupID: toNumber(record.groupID),
         categoryID: toNumber(record.categoryID),
         mass: toNumber(record.mass),
@@ -103,6 +216,10 @@
     const baseMaterials = Array.from(referencedInputTypeIds)
       .filter((typeId) => !craftableTypeIds.has(typeId))
       .sort((left, right) => left - right);
+    const recipeFacilityPrefixesByBlueprint =
+      facilitiesData && typeof facilitiesData === "object"
+        ? buildRecipeFacilityPrefixesByBlueprint(typesData, facilitiesData)
+        : {};
 
     return {
       meta: {
@@ -114,6 +231,7 @@
       recipes,
       recipesByOutput,
       baseMaterials,
+      recipeFacilityPrefixesByBlueprint,
     };
   }
 
@@ -125,9 +243,37 @@
     return graph?.recipes?.[blueprintID] ?? graph?.recipes?.[String(blueprintID)] ?? null;
   }
 
+  function getRecipeFacilitySortRank(graph, recipe) {
+    const blueprintId = Number(recipe?.blueprintID);
+    if (!Number.isFinite(blueprintId)) {
+      return FACILITY_PREFIX_ORDER.length;
+    }
+
+    const rawPrefixes =
+      graph?.recipeFacilityPrefixesByBlueprint?.[blueprintId] ??
+      graph?.recipeFacilityPrefixesByBlueprint?.[String(blueprintId)] ??
+      [];
+    const orderedPrefixes = toOrderedFacilityPrefixes(rawPrefixes);
+    if (!orderedPrefixes.length) {
+      return FACILITY_PREFIX_ORDER.length;
+    }
+
+    const rank = FACILITY_PREFIX_ORDER.indexOf(orderedPrefixes[0]);
+    return rank === -1 ? FACILITY_PREFIX_ORDER.length : rank;
+  }
+
   function getAvailableRecipesForType(graph, typeID) {
     const recipeIds = graph?.recipesByOutput?.[typeID] ?? graph?.recipesByOutput?.[String(typeID)] ?? [];
-    return recipeIds.map((recipeID) => getRecipe(graph, recipeID)).filter(Boolean);
+    return recipeIds
+      .map((recipeID) => getRecipe(graph, recipeID))
+      .filter(Boolean)
+      .sort((left, right) => {
+        const rankDiff = getRecipeFacilitySortRank(graph, left) - getRecipeFacilitySortRank(graph, right);
+        if (rankDiff !== 0) {
+          return rankDiff;
+        }
+        return Number(left.blueprintID) - Number(right.blueprintID);
+      });
   }
 
   function resolveRecipeChoice(graph, typeID, recipeSelections = {}) {
@@ -206,8 +352,16 @@
   }
 
   function getCraftableItems(graph) {
-    return Object.values(graph?.items || {})
-      .filter((item) => item?.isCraftable && typeof item.name === "string")
+    return Object.entries(graph?.items || {})
+      .map(([typeIdKey, item]) => {
+        const typeId = Number(item?.typeID ?? typeIdKey);
+        return {
+          ...(item || {}),
+          typeID: Number.isFinite(typeId) ? typeId : item?.typeID,
+          name: resolveItemName(item, Number.isFinite(typeId) ? typeId : item?.typeID),
+        };
+      })
+      .filter((item) => item?.isCraftable)
       .sort(compareNamedItems);
   }
 
@@ -448,7 +602,22 @@
         .map((blueprintId) => Number(blueprintId))
         .filter((blueprintId) => Number.isFinite(blueprintId))
         .sort((left, right) => left - right)
-        .map((blueprintId) => ({ blueprintId }));
+        .map((blueprintId) => {
+          const recipe = getRecipe(graph, blueprintId);
+          const selectedOutput = recipe ? getRecipeOutputForType(recipe, typeId) : null;
+          const keyInputHint = recipe?.inputs?.[0]
+            ? `${getItem(graph, recipe.inputs[0].typeID)?.name ?? `Type ${recipe.inputs[0].typeID}`} x${formatNumber(
+                recipe.inputs[0].quantity,
+              )}`
+            : null;
+
+          return {
+            blueprintId,
+            outputQuantity: Math.max(1, Number(selectedOutput?.quantity) || 1),
+            runtime: Number(recipe?.runTime) || 0,
+            keyInputHint,
+          };
+        });
     }
 
     return optionsByType;
@@ -464,7 +633,24 @@
       .sort((left, right) => left.typeId - right.typeId);
   }
 
-  function renderPlannerOutputSectionMarkup({ title, rows = [], emptyMessage }) {
+  function getPlannerDecisionTypeIdSet(plannerResult = {}) {
+    const typeIds = new Set();
+    for (const decision of plannerResult?.decisions || []) {
+      const typeId = Number(decision?.typeId);
+      if (Number.isFinite(typeId)) {
+        typeIds.add(typeId);
+      }
+    }
+    return typeIds;
+  }
+
+  function renderPlannerOutputSectionMarkup({
+    title,
+    rows = [],
+    emptyMessage,
+    decisionTypeIds = new Set(),
+    activeDecisionTypeId = null,
+  }) {
     const sortedRows = toSortedPlannerRows(rows);
     const bodyMarkup = sortedRows.length
       ? `
@@ -474,14 +660,27 @@
             <span>Quantity</span>
           </div>
           ${sortedRows
-            .map(
-              (row) => `
-                <div class="planner-output-row" data-planner-row-type-id="${row.typeId}">
+            .map((row) => {
+              const isDecisionLinked = decisionTypeIds.has(row.typeId);
+              const isActive = Number(activeDecisionTypeId) === row.typeId;
+              const className = [
+                "planner-output-row",
+                isDecisionLinked ? "planner-output-row-link" : "",
+                isActive ? "is-active-decision-link" : "",
+              ]
+                .filter(Boolean)
+                .join(" ");
+              const activationAttributes = isDecisionLinked
+                ? `data-planner-focus-decision-type-id="${row.typeId}" tabindex="0" role="button" aria-controls="planner-decision-${row.typeId}" aria-label="Focus decision for type ${row.typeId}"`
+                : "";
+
+              return `
+                <div class="${className}" data-planner-row-type-id="${row.typeId}" ${activationAttributes}>
                   <span>${row.typeId}</span>
                   <span>${row.quantity}</span>
                 </div>
-              `,
-            )
+              `;
+            })
             .join("")}
         </div>
       `
@@ -500,19 +699,161 @@
     const plannerResult = model.plannerResult || {};
     const hasPlanLines = Array.isArray(planLines) && planLines.length > 0;
     const noPlanMessage = "No plan lines yet.";
+    const decisionTypeIds = getPlannerDecisionTypeIdSet(plannerResult);
+    const activeDecisionTypeId = Number(model.plannerState?.uiState?.activeDecisionTypeId);
 
     return {
       rawMaterialsMarkup: renderPlannerOutputSectionMarkup({
         title: "Raw Materials to Mine",
         rows: hasPlanLines ? plannerResult.rawMaterials || [] : [],
         emptyMessage: hasPlanLines ? "No raw materials required" : noPlanMessage,
+        decisionTypeIds,
+        activeDecisionTypeId,
       }),
       componentsMarkup: renderPlannerOutputSectionMarkup({
         title: "Components to Produce",
         rows: hasPlanLines ? plannerResult.components || [] : [],
         emptyMessage: hasPlanLines ? "No components required" : noPlanMessage,
+        decisionTypeIds,
+        activeDecisionTypeId,
       }),
     };
+  }
+
+  function buildPlannerDecisionOptionMetadata(option = {}, typeId, graph = null) {
+    const blueprintId = Number(option?.blueprintId);
+    const recipe = Number.isFinite(blueprintId) ? getRecipe(graph, blueprintId) : null;
+    const selectedOutput = recipe ? getRecipeOutputForType(recipe, typeId) : null;
+    const outputQuantity = Math.max(1, Number(option?.outputQuantity ?? selectedOutput?.quantity) || 1);
+    const runtime = Number(option?.runtime ?? option?.runTime ?? recipe?.runTime) || 0;
+    const graphInputHint = recipe?.inputs?.[0]
+      ? `${getItem(graph, recipe.inputs[0].typeID)?.name ?? `Type ${recipe.inputs[0].typeID}`} x${formatNumber(recipe.inputs[0].quantity)}`
+      : null;
+
+    return {
+      blueprintId,
+      outputQuantity,
+      runtime,
+      keyInputHint: option?.keyInputHint || option?.inputHint || graphInputHint || null,
+    };
+  }
+
+  function renderPlannerDecisionPanelMarkup(model = {}, graph = null) {
+    const plannerResult = model.plannerResult || {};
+    const plannerState = model.plannerState || {};
+    const decisionSummary = plannerResult.decisionSummary || {
+      totalMultiPathItems: 0,
+      defaultCount: 0,
+      overriddenCount: 0,
+    };
+    const decisions = Array.isArray(plannerResult.decisions) ? plannerResult.decisions : [];
+    const activeDecisionTypeId = Number(plannerState.uiState?.activeDecisionTypeId);
+
+    const summaryMarkup = `
+      <section class="planner-decision-summary">
+        <div class="planner-decision-summary-card">
+          <span class="summary-key">Total ambiguous items</span>
+          <strong class="planner-decision-summary-value">${formatNumber(decisionSummary.totalMultiPathItems || 0)}</strong>
+        </div>
+        <div class="planner-decision-summary-card">
+          <span class="summary-key">Overridden</span>
+          <strong class="planner-decision-summary-value">${formatNumber(decisionSummary.overriddenCount || 0)}</strong>
+        </div>
+        <div class="planner-decision-summary-card">
+          <span class="summary-key">Default</span>
+          <strong class="planner-decision-summary-value">${formatNumber(decisionSummary.defaultCount || 0)}</strong>
+        </div>
+      </section>
+    `;
+
+    if (!decisions.length) {
+      return `${summaryMarkup}<div class="planner-empty-state">No decisions</div>`;
+    }
+
+    const groupsMarkup = decisions
+      .map((decision) => {
+        const typeId = Number(decision?.typeId);
+        const currentBlueprintId = Number(decision?.currentRecipe?.blueprintId);
+        const isActive = typeId === activeDecisionTypeId;
+        const stateValue = decision?.decisionState === "overridden" ? "overridden" : "default";
+        const options = Array.isArray(decision?.options) ? decision.options : [];
+
+        return `
+          <section data-planner-decision-type-id="${typeId}" id="planner-decision-${typeId}" class="planner-decision-group${
+            isActive ? " is-active" : ""
+          }" tabindex="-1">
+            <div class="planner-decision-group-head">
+              <div>
+                <div class="planner-decision-type-label">Type ${typeId}</div>
+                <div class="planner-decision-count">${options.length} recipe option${options.length === 1 ? "" : "s"}</div>
+              </div>
+              <span class="planner-decision-state-pill" data-state="${stateValue}">${escapeHtml(stateValue)}</span>
+            </div>
+            <div class="planner-decision-meta">
+              <span class="summary-key">State</span>
+              <strong class="planner-decision-state" data-state="${stateValue}">${escapeHtml(stateValue)}</strong>
+            </div>
+            <p class="planner-decision-scope-note">This choice applies to all occurrences of this item in the current plan.</p>
+            <div class="planner-decision-options">
+              ${options
+                .map((option) => {
+                  const metadata = buildPlannerDecisionOptionMetadata(option, typeId, graph);
+                  const checked = metadata.blueprintId === currentBlueprintId;
+
+                  return `
+                    <label class="planner-decision-option${checked ? " is-selected" : ""}">
+                      <input
+                        type="radio"
+                        name="planner-decision-type-${typeId}"
+                        value="${metadata.blueprintId}"
+                        data-planner-decision-option-type-id="${typeId}"
+                        data-planner-decision-blueprint-id="${metadata.blueprintId}"
+                        ${checked ? "checked" : ""}
+                      />
+                      <span class="planner-decision-option-main">
+                        <span class="planner-decision-option-id">Blueprint ${metadata.blueprintId}</span>
+                        <span class="planner-decision-option-meta">Out ${formatNumber(metadata.outputQuantity)} · ${formatRuntime(
+                          metadata.runtime,
+                        )}</span>
+                        ${
+                          metadata.keyInputHint
+                            ? `<span class="planner-decision-option-hint">${escapeHtml(metadata.keyInputHint)}</span>`
+                            : ""
+                        }
+                      </span>
+                    </label>
+                  `;
+                })
+                .join("")}
+            </div>
+          </section>
+        `;
+      })
+      .join("");
+
+    return `${summaryMarkup}<div class="planner-decision-groups">${groupsMarkup}</div>`;
+  }
+
+  function focusPlannerDecisionFromOutput(plannerRuntime, typeId) {
+    if (!plannerRuntime || typeof plannerRuntime.focusDecision !== "function") {
+      return false;
+    }
+
+    return plannerRuntime.focusDecision(typeId);
+  }
+
+  function getEventTargetElement(event) {
+    const target = event?.target ?? null;
+    if (!target) {
+      return null;
+    }
+    if (typeof target.closest === "function") {
+      return target;
+    }
+    if (target.parentElement && typeof target.parentElement.closest === "function") {
+      return target.parentElement;
+    }
+    return null;
   }
 
   function createInputLine(graph, node, runsNeeded) {
@@ -779,9 +1120,53 @@
     };
   }
 
-  function buildProgressSections(rollup, progressMap = {}) {
+  function buildDynamicBaseMaterials(rollup, progressMap = {}, options = {}) {
+    const graph = options?.graph || null;
+    const tree = options?.tree || null;
+    const recipeSelections = options?.recipeSelections || {};
+    if (!graph || !tree) {
+      return rollup?.baseMaterials || [];
+    }
+
+    const baseMaterials = new Map();
+
+    for (const child of tree.children || []) {
+      if (child?.isBaseMaterial) {
+        upsertAggregate(baseMaterials, child.item, child.requestedQuantity);
+      }
+    }
+
+    for (const componentLine of rollup?.directComponents || []) {
+      const typeID = Number(componentLine?.typeID);
+      const need = Math.max(0, Number(componentLine?.quantity) || 0);
+      const have = normalizeProgressValue(progressMap?.[typeID] ?? progressMap?.[String(typeID)] ?? 0);
+      const remaining = Math.max(0, need - have);
+      if (!remaining) {
+        continue;
+      }
+
+      const componentTree = buildDependencyTree(graph, typeID, remaining, recipeSelections);
+      const componentRollup = rollupDependencyTree(componentTree);
+      for (const baseLine of componentRollup.baseMaterials || []) {
+        const item =
+          getItem(graph, baseLine.typeID) ||
+          ({
+            typeID: baseLine.typeID,
+            name: baseLine.name,
+            mass: (Number(baseLine.quantity) || 0) > 0 ? Number(baseLine.mass || 0) / Number(baseLine.quantity) : 0,
+            volume: (Number(baseLine.quantity) || 0) > 0 ? Number(baseLine.volume || 0) / Number(baseLine.quantity) : 0,
+          });
+        upsertAggregate(baseMaterials, item, baseLine.quantity);
+      }
+    }
+
+    return sortedAggregateValues(baseMaterials);
+  }
+
+  function buildProgressSections(rollup, progressMap = {}, options = {}) {
     const directComponents = (rollup?.directComponents || []).map((line) => createProgressLine(line, progressMap));
-    const baseMaterials = (rollup?.baseMaterials || []).map((line) => createProgressLine(line, progressMap));
+    const dynamicBaseMaterials = buildDynamicBaseMaterials(rollup, progressMap, options);
+    const baseMaterials = dynamicBaseMaterials.map((line) => createProgressLine(line, progressMap));
 
     return {
       directComponents,
@@ -834,18 +1219,21 @@
     const keyInput = recipe.inputs?.[0]
       ? `${getItem(graph, recipe.inputs[0].typeID)?.name ?? `Type ${recipe.inputs[0].typeID}`} x${formatNumber(recipe.inputs[0].quantity)}`
       : "No inputs";
-
-    return `BP ${recipe.blueprintID} · out ${formatNumber(outputQuantity)} · ${runtime} · ${keyInput}`;
+    const prefixTag = getRecipeFacilityPrefixTag(graph, recipe);
+    return `${prefixTag ? `${prefixTag} ` : ""}out ${formatNumber(outputQuantity)} · ${runtime} · ${keyInput}`;
   }
 
-  function buildRecipeChoiceSummary(recipe, typeID) {
+  function buildRecipeChoiceSummary(recipe, typeID, graph = null) {
     if (!recipe) {
       return "Base";
     }
 
     const selectedOutput = getRecipeOutputForType(recipe, typeID);
     const outputQuantity = Math.max(1, Number(selectedOutput?.quantity) || 1);
-    return `BP ${recipe.blueprintID} · out ${formatNumber(outputQuantity)} · ${formatRuntime(recipe.runTime || 0)}`;
+    const prefixTag = getRecipeFacilityPrefixTag(graph, recipe);
+    return `${prefixTag ? `${prefixTag} ` : ""}out ${formatNumber(outputQuantity)} · ${formatRuntime(
+      recipe.runTime || 0,
+    )}`;
   }
 
   function renderSelectedTargetMarkup(summary) {
@@ -1005,12 +1393,24 @@
       hideCovered = false,
       maxDepth = null,
       showRecipeDetails = false,
-      showBlueprintIds = true,
       showTrackedStatus = true,
       activeRecipeChooserTypeID = null,
       graph = null,
       expandedNodeIds = new Set(),
     } = options;
+
+    function getTrackedPercent(trackedLine) {
+      const rawValue = Number(
+        trackedLine?.progressPercent
+          ?? (Number(trackedLine?.need) > 0
+            ? (Number(trackedLine?.have) / Number(trackedLine?.need)) * 100
+            : 0),
+      );
+      if (!Number.isFinite(rawValue)) {
+        return 0;
+      }
+      return Math.min(100, Math.max(0, rawValue));
+    }
 
     function isCovered(node) {
       const trackedLine = progressLookup.get(Number(node.typeID));
@@ -1032,17 +1432,12 @@
       const trackedStatus = trackedLine ? getProgressStatus(trackedLine) : "";
       const recipeCount = node.availableRecipes?.length || 0;
       const showRecipeChooser = recipeCount > 1 && Number(activeRecipeChooserTypeID) === Number(node.typeID);
+      const trackedPercent = trackedLine ? getTrackedPercent(trackedLine) : 0;
       const rowClasses = [
         "outline-row",
         recipeCount > 1 ? "has-alternates" : "",
       ].filter(Boolean).join(" ");
       const pillMarkup = [];
-
-      if (showBlueprintIds || !node.recipe) {
-        pillMarkup.push(`
-          <span class="outline-pill">${escapeHtml(node.recipe ? `BP ${node.recipe.blueprintID}` : "Base")}</span>
-        `);
-      }
 
       if (recipeCount > 1) {
         pillMarkup.push(`
@@ -1055,7 +1450,9 @@
             ${formatNumber(recipeCount)} recipes
           </button>
         `);
-        pillMarkup.push(`<span class="outline-pill outline-pill-choice">${escapeHtml(buildRecipeChoiceSummary(node.recipe, node.typeID))}</span>`);
+        pillMarkup.push(
+          `<span class="outline-pill outline-pill-choice">${escapeHtml(buildRecipeChoiceSummary(node.recipe, node.typeID, graph))}</span>`,
+        );
       }
 
       if (showRecipeDetails && node.recipe) {
@@ -1097,12 +1494,22 @@
         `
         : "";
 
+      const statusMeterMarkup = showTrackedStatus && trackedLine
+        ? `
+          <div class="outline-status-meter" aria-hidden="true">
+            <span class="outline-status-meter-fill status-${trackedStatus}" style="width:${trackedPercent.toFixed(1)}%"></span>
+          </div>
+        `
+        : "";
+
       return `
-        <div class="${rowClasses}" data-depth="${node.depth}" style="--depth:${node.depth}">
+        <div class="${rowClasses}" data-depth="${node.depth}" data-status="${trackedStatus || "none"}" style="--depth:${node.depth}">
           <button
             type="button"
             class="outline-toggle${canExpand ? "" : " is-disabled"}"
             data-toggle-node-id="${node.nodeId}"
+            aria-expanded="${canExpand ? String(isExpanded) : "false"}"
+            aria-label="${canExpand ? `${isExpanded ? "Collapse" : "Expand"} ${escapeHtml(node.item.name)}` : `${escapeHtml(node.item.name)} has no child dependencies`}"
             ${canExpand ? "" : "disabled"}
           >
             ${canExpand ? (isExpanded ? "−" : "+") : "·"}
@@ -1111,11 +1518,20 @@
             <span class="item-icon" data-icon-type-id="${node.item.typeID}" data-icon-fallback="${escapeHtml(getIconFallbackLabel(node.item.name))}">
               ${escapeHtml(getIconFallbackLabel(node.item.name))}
             </span>
-            <span class="outline-name">${escapeHtml(node.item.name)}</span>
+            <div class="outline-main-copy">
+              <span class="outline-name">${escapeHtml(node.item.name)}</span>
+              <div class="outline-inline-meta">
+                <span class="outline-qty">need ${formatNumber(node.requestedQuantity)}</span>
+                <span class="outline-runs">${node.recipe ? `${formatNumber(node.runsNeeded)} run${node.runsNeeded === 1 ? "" : "s"}` : "raw material"}</span>
+              </div>
+            </div>
           </div>
-          <span class="outline-qty">${formatNumber(node.requestedQuantity)}</span>
-          <span class="outline-runs">${node.recipe ? `${formatNumber(node.runsNeeded)}r` : "raw"}</span>
-          ${pillMarkup.join("")}
+          <div class="outline-side">
+            <div class="outline-pill-group">
+              ${pillMarkup.join("")}
+            </div>
+            ${statusMeterMarkup}
+          </div>
         </div>
         ${chooserMarkup}
         ${childMarkup}
@@ -1287,20 +1703,23 @@
   async function createGraphFromFolderFiles(files) {
     const typesFile = files.find((file) => file.name === "types.json");
     const blueprintsFile = files.find((file) => file.name === "industry_blueprints.json");
+    const facilitiesFile = files.find((file) => file.name === "industry_facilities.json");
 
     if (!typesFile || !blueprintsFile) {
       throw new Error("Folder must contain both types.json and industry_blueprints.json");
     }
 
-    const [typesData, blueprintsData] = await Promise.all([
+    const [typesData, blueprintsData, facilitiesData] = await Promise.all([
       readJsonFile(typesFile),
       readJsonFile(blueprintsFile),
+      facilitiesFile ? readJsonFile(facilitiesFile) : Promise.resolve(null),
     ]);
 
     return buildGraphFromStrippedData(
       inferSnapshotFromFolderFiles(files),
       typesData,
       blueprintsData,
+      facilitiesData,
     );
   }
 
@@ -1334,6 +1753,313 @@
 
   function formatMass(value) {
     return formatNumber(value);
+  }
+
+  function createBrowserPlannerState(datasetFingerprint) {
+    return {
+      planLines: [],
+      recipeChoiceByType: {},
+      uiState: {},
+      datasetFingerprint,
+    };
+  }
+
+  function buildBrowserPlannerStorageKey(datasetFingerprint) {
+    return `fic.planner.v1.${datasetFingerprint}`;
+  }
+
+  function saveBrowserPlannerState(state) {
+    if (!state || !state.datasetFingerprint) {
+      return;
+    }
+
+    const storage = getBrowserStorage();
+    if (!storage || typeof storage.setItem !== "function") {
+      return;
+    }
+
+    storage.setItem(
+      buildBrowserPlannerStorageKey(state.datasetFingerprint),
+      JSON.stringify({
+        planLines: Array.isArray(state.planLines) ? state.planLines : [],
+        recipeChoiceByType:
+          state.recipeChoiceByType && typeof state.recipeChoiceByType === "object" ? state.recipeChoiceByType : {},
+        uiState: state.uiState && typeof state.uiState === "object" ? state.uiState : {},
+        datasetFingerprint: state.datasetFingerprint,
+      }),
+    );
+  }
+
+  function loadBrowserPlannerState(datasetFingerprint) {
+    if (!datasetFingerprint) {
+      return null;
+    }
+
+    const storage = getBrowserStorage();
+    if (!storage || typeof storage.getItem !== "function") {
+      return null;
+    }
+
+    const raw = storage.getItem(buildBrowserPlannerStorageKey(datasetFingerprint));
+    if (!raw) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || parsed.datasetFingerprint !== datasetFingerprint) {
+        return null;
+      }
+
+      return {
+        planLines: Array.isArray(parsed.planLines) ? parsed.planLines : [],
+        recipeChoiceByType:
+          parsed.recipeChoiceByType && typeof parsed.recipeChoiceByType === "object" ? parsed.recipeChoiceByType : {},
+        uiState: parsed.uiState && typeof parsed.uiState === "object" ? parsed.uiState : {},
+        datasetFingerprint: parsed.datasetFingerprint,
+      };
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  function browserNormalizePlannerLines(planLines) {
+    const aggregate = new Map();
+
+    for (const line of Array.isArray(planLines) ? planLines : []) {
+      const typeId = Number(line?.outputTypeId);
+      const quantity = Number(line?.quantity);
+
+      if (!Number.isInteger(typeId) || !Number.isInteger(quantity) || quantity < 1) {
+        continue;
+      }
+
+      aggregate.set(typeId, (aggregate.get(typeId) || 0) + quantity);
+    }
+
+    return Array.from(aggregate.entries())
+      .sort((left, right) => left[0] - right[0])
+      .map(([typeId, quantity]) => ({ typeId, quantity }));
+  }
+
+  function browserGetPlannerRecipeOptions(typeId, recipeOptionsByType = {}) {
+    const options = recipeOptionsByType[typeId] ?? recipeOptionsByType[String(typeId)] ?? [];
+    if (!Array.isArray(options)) {
+      return [];
+    }
+
+    return options
+      .filter((option) => option && Number.isFinite(Number(option.blueprintId)))
+      .slice()
+      .sort((left, right) => Number(left.blueprintId) - Number(right.blueprintId));
+  }
+
+  function browserResolveRecipeForType(typeId, recipeChoiceByType = {}, recipeOptionsByType = {}) {
+    const options = browserGetPlannerRecipeOptions(typeId, recipeOptionsByType);
+    if (!options.length) {
+      return null;
+    }
+
+    const chosenBlueprintId = Number(recipeChoiceByType[typeId] ?? recipeChoiceByType[String(typeId)]);
+    if (Number.isFinite(chosenBlueprintId)) {
+      const matched = options.find((option) => Number(option.blueprintId) === chosenBlueprintId);
+      if (matched) {
+        return matched;
+      }
+    }
+
+    return options[0];
+  }
+
+  function browserBuildDecisionSet(typeIdsInPlan, recipeOptionsByType = {}, recipeChoiceByType = {}) {
+    const decisionSet = [];
+    const sortedTypeIds = Array.from(new Set((Array.isArray(typeIdsInPlan) ? typeIdsInPlan : []).map(Number)))
+      .filter(Number.isFinite)
+      .sort((left, right) => left - right);
+
+    for (const typeId of sortedTypeIds) {
+      const options = browserGetPlannerRecipeOptions(typeId, recipeOptionsByType);
+      if (options.length <= 1) {
+        continue;
+      }
+
+      const defaultRecipe = options[0];
+      const currentRecipe = browserResolveRecipeForType(typeId, recipeChoiceByType, recipeOptionsByType);
+      if (!currentRecipe) {
+        continue;
+      }
+
+      decisionSet.push({
+        typeId,
+        options,
+        currentRecipe,
+        defaultRecipe,
+        decisionState:
+          Number(currentRecipe.blueprintId) === Number(defaultRecipe.blueprintId) ? "default" : "overridden",
+      });
+    }
+
+    return decisionSet;
+  }
+
+  function browserBuildDecisionSummary(decisionSet) {
+    const normalized = Array.isArray(decisionSet) ? decisionSet : [];
+    const defaultCount = normalized.filter((entry) => entry?.decisionState === "default").length;
+    const overriddenCount = normalized.filter((entry) => entry?.decisionState === "overridden").length;
+
+    return {
+      totalMultiPathItems: normalized.length,
+      defaultCount,
+      overriddenCount,
+    };
+  }
+
+  function browserComputePlannerPlan({
+    planLines,
+    recipeChoiceByType,
+    recipeOptionsByType,
+    expandDependencies,
+  }) {
+    const normalizedPlanLines = browserNormalizePlannerLines(planLines);
+    const resolver = (typeId) => browserResolveRecipeForType(typeId, recipeChoiceByType || {}, recipeOptionsByType || {});
+    const rawMaterialsMap = new Map();
+    const componentsMap = new Map();
+    const outlineMap = new Map();
+    const typeIdsInGraph = new Set();
+    const targetTypeIds = new Set(normalizedPlanLines.map((line) => Number(line.typeId)));
+
+    let totalRuntime = 0;
+    let totalMass = 0;
+    let totalVolume = 0;
+
+    function toNumericValue(value) {
+      const numericValue = Number(value);
+      return Number.isFinite(numericValue) ? numericValue : 0;
+    }
+
+    function normalizeNodeTypeId(node) {
+      const typeId = Number(node?.typeId ?? node?.typeID);
+      return Number.isFinite(typeId) ? typeId : null;
+    }
+
+    function normalizeNodeChildren(node) {
+      return Array.isArray(node?.children) ? node.children : [];
+    }
+
+    function isBaseMaterialNode(node) {
+      if (typeof node?.isBaseMaterial === "boolean") {
+        return node.isBaseMaterial;
+      }
+      return normalizeNodeChildren(node).length === 0;
+    }
+
+    function incrementMapValue(map, typeId, quantity) {
+      map.set(typeId, (map.get(typeId) || 0) + quantity);
+    }
+
+    function sortedQuantityLines(map) {
+      return Array.from(map.entries())
+        .sort((left, right) => left[0] - right[0])
+        .map(([typeId, quantity]) => ({ typeId, quantity }));
+    }
+
+    function ensureOutlineNode(typeId, recipe) {
+      if (!outlineMap.has(typeId)) {
+        outlineMap.set(typeId, {
+          typeId,
+          quantity: 0,
+          runs: 0,
+          selectedRecipe: recipe ?? null,
+          usageCount: 0,
+          children: new Map(),
+        });
+      }
+      const current = outlineMap.get(typeId);
+      if (!current.selectedRecipe && recipe) {
+        current.selectedRecipe = recipe;
+      }
+      return current;
+    }
+
+    function finalizeOutline() {
+      return Array.from(outlineMap.values())
+        .sort((left, right) => left.typeId - right.typeId)
+        .map((entry) => ({
+          typeId: entry.typeId,
+          quantity: entry.quantity,
+          runs: entry.runs,
+          selectedRecipe: entry.selectedRecipe,
+          usageCount: entry.usageCount,
+          children: Array.from(entry.children.entries())
+            .sort((left, right) => left[0] - right[0])
+            .map(([typeId, quantity]) => ({ typeId, quantity })),
+        }));
+    }
+
+    function visitNode(node, isRoot = false) {
+      const typeId = normalizeNodeTypeId(node);
+      if (typeId === null) {
+        return;
+      }
+
+      const quantity = toNumericValue(node?.quantity);
+      const runs = toNumericValue(node?.runs ?? node?.runsNeeded);
+      const runtime = toNumericValue(node?.runtime ?? node?.totalRuntime);
+      const mass = toNumericValue(node?.mass ?? node?.totalMass);
+      const volume = toNumericValue(node?.volume ?? node?.totalVolume);
+      const recipe = node?.recipe ?? null;
+      const children = normalizeNodeChildren(node);
+
+      totalRuntime += runtime;
+      totalMass += mass;
+      totalVolume += volume;
+      typeIdsInGraph.add(typeId);
+
+      const outlineNode = ensureOutlineNode(typeId, recipe);
+      outlineNode.quantity += quantity;
+      outlineNode.runs += runs;
+      outlineNode.usageCount += 1;
+
+      for (const child of children) {
+        const childTypeId = normalizeNodeTypeId(child);
+        if (childTypeId === null) {
+          continue;
+        }
+        incrementMapValue(outlineNode.children, childTypeId, toNumericValue(child?.quantity));
+      }
+
+      if (isBaseMaterialNode(node)) {
+        incrementMapValue(rawMaterialsMap, typeId, quantity);
+      } else if (!isRoot && !targetTypeIds.has(typeId)) {
+        incrementMapValue(componentsMap, typeId, quantity);
+      }
+
+      for (const child of children) {
+        visitNode(child, false);
+      }
+    }
+
+    for (const line of normalizedPlanLines) {
+      const expanded = typeof expandDependencies === "function" ? expandDependencies(line.typeId, line.quantity, resolver) : null;
+      if (expanded) {
+        visitNode(expanded, true);
+      }
+    }
+
+    const decisions = browserBuildDecisionSet(Array.from(typeIdsInGraph), recipeOptionsByType || {}, recipeChoiceByType || {});
+
+    return {
+      rawMaterials: sortedQuantityLines(rawMaterialsMap),
+      components: sortedQuantityLines(componentsMap),
+      dependencyOutline: finalizeOutline(),
+      totals: {
+        totalRuntime,
+        totalMass,
+        totalVolume,
+      },
+      decisions,
+      decisionSummary: browserBuildDecisionSummary(decisions),
+    };
   }
 
   function collectExpandableNodeIds(tree) {
@@ -1373,36 +2099,10 @@
 
   function getPlannerSupport() {
     const fallback = {
-      createEmptyPlannerState(datasetFingerprint) {
-        return {
-          planLines: [],
-          recipeChoiceByType: {},
-          uiState: {},
-          datasetFingerprint,
-        };
-      },
-      savePlannerState() {},
-      loadPlannerState() {
-        return null;
-      },
-      computePlannerPlan() {
-        return {
-          rawMaterials: [],
-          components: [],
-          dependencyOutline: [],
-          totals: {
-            totalRuntime: 0,
-            totalMass: 0,
-            totalVolume: 0,
-          },
-          decisions: [],
-          decisionSummary: {
-            totalMultiPathItems: 0,
-            defaultCount: 0,
-            overriddenCount: 0,
-          },
-        };
-      },
+      createEmptyPlannerState: createBrowserPlannerState,
+      savePlannerState: saveBrowserPlannerState,
+      loadPlannerState: loadBrowserPlannerState,
+      computePlannerPlan: browserComputePlannerPlan,
     };
 
     if (typeof require !== "function") {
@@ -1469,6 +2169,19 @@
     function load() {
       const loaded = support.loadPlannerState(datasetFingerprint);
       runtimeState.plannerState = loaded || support.createEmptyPlannerState(datasetFingerprint);
+      runtimeState.plannerState.planLines = Array.isArray(runtimeState.plannerState.planLines)
+        ? runtimeState.plannerState.planLines
+        : [];
+      runtimeState.plannerState.recipeChoiceByType =
+        runtimeState.plannerState.recipeChoiceByType && typeof runtimeState.plannerState.recipeChoiceByType === "object"
+          ? runtimeState.plannerState.recipeChoiceByType
+          : {};
+      runtimeState.plannerState.uiState =
+        runtimeState.plannerState.uiState && typeof runtimeState.plannerState.uiState === "object"
+          ? runtimeState.plannerState.uiState
+          : {};
+      runtimeState.plannerState.datasetFingerprint =
+        runtimeState.plannerState.datasetFingerprint || datasetFingerprint;
       recompute();
       return runtimeState.plannerState;
     }
@@ -1499,6 +2212,46 @@
       persist();
     }
 
+    function selectRecipe(typeId, blueprintId) {
+      const numericTypeId = Number(typeId);
+      const numericBlueprintId = Number(blueprintId);
+      if (!Number.isFinite(numericTypeId) || !Number.isFinite(numericBlueprintId)) {
+        return false;
+      }
+
+      runtimeState.plannerState.recipeChoiceByType = {
+        ...(runtimeState.plannerState.recipeChoiceByType || {}),
+        [numericTypeId]: numericBlueprintId,
+      };
+      runtimeState.plannerState.uiState = {
+        ...(runtimeState.plannerState.uiState || {}),
+        activeDecisionTypeId: numericTypeId,
+      };
+      recompute();
+      persist();
+      return true;
+    }
+
+    function focusDecision(typeId) {
+      const numericTypeId = Number(typeId);
+      if (!Number.isFinite(numericTypeId)) {
+        return false;
+      }
+
+      const hasDecision = (runtimeState.plannerResult.decisions || []).some(
+        (decision) => Number(decision?.typeId) === numericTypeId,
+      );
+      if (!hasDecision) {
+        return false;
+      }
+
+      runtimeState.plannerState.uiState = {
+        ...(runtimeState.plannerState.uiState || {}),
+        activeDecisionTypeId: numericTypeId,
+      };
+      return true;
+    }
+
     function setMode(mode) {
       runtimeState.mode = mode === "planner" ? "planner" : "calculator";
     }
@@ -1519,11 +2272,13 @@
 
     return {
       addLine,
+      focusDecision,
       getRenderModel,
       load,
       persist,
       recompute,
       removeLine,
+      selectRecipe,
       setMode,
       setRecipeOptionsByType,
       updateLineQuantity,
@@ -1562,7 +2317,6 @@
     const treeDepthSelect = document.getElementById("treeDepthSelect");
     const hideCoveredToggle = document.getElementById("hideCoveredToggle");
     const showRecipeDetailsToggle = document.getElementById("showRecipeDetailsToggle");
-    const showBlueprintIdsToggle = document.getElementById("showBlueprintIdsToggle");
     const showTrackedStatusToggle = document.getElementById("showTrackedStatusToggle");
     const modeCalculatorButton = document.getElementById("modeCalculator");
     const modePlannerButton = document.getElementById("modePlanner");
@@ -1599,7 +2353,6 @@
       treeDepth: null,
       hideCovered: false,
       showRecipeDetails: false,
-      showBlueprintIds: true,
       showTrackedStatus: true,
     };
     const plannerRuntime = createPlannerRuntime({
@@ -1666,12 +2419,11 @@
       }
 
       if (plannerDecisions) {
-        const decisionLines = model.plannerResult.decisions || [];
-        plannerDecisions.textContent = decisionLines.length
-          ? decisionLines
-              .map((entry) => `type ${entry.typeId} · options ${entry.options.length} · ${entry.decisionState}`)
-              .join("\n")
-          : "No decisions";
+        plannerDecisions.innerHTML = renderPlannerDecisionPanelMarkup(model, state.graph);
+        const activeDecisionGroup = plannerDecisions.querySelector(".planner-decision-group.is-active");
+        if (activeDecisionGroup && typeof activeDecisionGroup.scrollIntoView === "function") {
+          activeDecisionGroup.scrollIntoView({ block: "nearest" });
+        }
       }
     }
 
@@ -1703,7 +2455,11 @@
         return;
       }
 
-      state.currentProgressSections = buildProgressSections(state.currentRollup, state.progressByTypeID);
+      state.currentProgressSections = buildProgressSections(state.currentRollup, state.progressByTypeID, {
+        graph: state.graph,
+        tree: state.currentTree,
+        recipeSelections: state.recipeSelections,
+      });
       state.currentProgressLookup = buildProgressLookup(state.currentProgressSections);
     }
 
@@ -1782,15 +2538,7 @@
 
       activeTargetCard.innerHTML = `
         <div class="summary-row"><span class="summary-key">Target</span><strong>${escapeHtml(state.currentSummary.item.name)}</strong></div>
-        <div class="summary-row"><span class="summary-key">Quantity</span><strong>${formatNumber(state.currentSummary.requestedQuantity)}</strong></div>
-        <div class="summary-row"><span class="summary-key">Recipe</span><strong>BP ${state.currentSummary.recipe.blueprintID}</strong></div>
-        ${state.currentSummary.availableRecipes.length > 1
-          ? `<div class="summary-row"><span class="summary-key">Alternates</span><strong>${formatNumber(state.currentSummary.availableRecipes.length)} recipes</strong></div>`
-          : ""}
         <div class="summary-row"><span class="summary-key">Type</span><strong>${state.currentSummary.item.typeID}</strong></div>
-        <div class="summary-row"><span class="summary-key">Runtime</span><strong>${formatRuntime(state.currentRollup?.totalRuntime || 0)}</strong></div>
-        <div class="summary-row"><span class="summary-key">Mass</span><strong>${formatMass(state.currentRollup?.totalMass || 0)}</strong></div>
-        <div class="summary-row"><span class="summary-key">Volume</span><strong>${formatVolume(state.currentRollup?.totalVolume || 0)}</strong></div>
         <div class="summary-row"><span class="summary-key">Progress</span><strong>${formatNumber(readyLines)} / ${formatNumber(trackedLines.length)}</strong></div>
       `;
     }
@@ -2010,7 +2758,6 @@
         hideCovered: state.hideCovered,
         maxDepth: state.treeDepth,
         showRecipeDetails: state.showRecipeDetails,
-        showBlueprintIds: state.showBlueprintIds,
         showTrackedStatus: state.showTrackedStatus,
         activeRecipeChooserTypeID: state.activeRecipeChooserTypeID,
         graph: state.graph,
@@ -2021,22 +2768,113 @@
       if (state.showRecipeDetails) {
         toolbarBits.push("Recipe details");
       }
-      if (state.showBlueprintIds) {
-        toolbarBits.push("Blueprint ids");
-      }
       if (state.showTrackedStatus) {
         toolbarBits.push("Tracked status");
       }
       toolbarBits.push(state.hideCovered ? "Covered hidden" : "All visible");
       toolbarBits.push(state.treeDepth ? `Depth ${state.treeDepth}` : "All depths");
       outlineMeta.textContent = `${rowCount} rows`;
+      const toolbarPillsMarkup = toolbarBits
+        .map((bit) => `<span class="outline-toolbar-pill">${escapeHtml(bit)}</span>`)
+        .join("");
+      const statusLegendMarkup = state.showTrackedStatus
+        ? `
+          <div class="outline-toolbar-legend" aria-hidden="true">
+            <span class="outline-legend-item"><span class="outline-legend-dot ready"></span>Ready</span>
+            <span class="outline-legend-item"><span class="outline-legend-dot partial"></span>Partial</span>
+            <span class="outline-legend-item"><span class="outline-legend-dot missing"></span>Missing</span>
+          </div>
+        `
+        : "";
       treePreview.innerHTML = `
         <div class="outline-toolbar">
-          <span>${escapeHtml(toolbarBits.join(" · "))}</span>
+          <div class="outline-toolbar-primary">
+            ${toolbarPillsMarkup}
+          </div>
+          <div class="outline-toolbar-secondary">
+            <span class="outline-toolbar-count">${formatNumber(rowCount)} rows</span>
+            ${statusLegendMarkup}
+          </div>
         </div>
         ${markup}
       `;
       hydrateIcons(treePreview, state.iconArchive);
+    }
+
+    function renderRawMaterialsProgress() {
+      if (!rawMaterialsPreview || !rawMaterialsCount) {
+        return;
+      }
+
+      if (!state.currentRollup || !state.currentProgressSections) {
+        rawMaterialsPreview.innerHTML = `<p>Choose a target to generate the mining list.</p>`;
+        rawMaterialsCount.textContent = "";
+        return;
+      }
+
+      rawMaterialsCount.textContent = `${formatNumber(state.currentProgressSections.baseMaterials.length)} rows`;
+      rawMaterialsPreview.innerHTML = renderProgressTableMarkup(
+        "Raw Materials to Mine",
+        state.currentProgressSections.baseMaterials,
+        "mined",
+      );
+      hydrateIcons(rawMaterialsPreview, state.iconArchive);
+    }
+
+    function renderComponentsProgress() {
+      if (!componentsPreview || !componentsCount) {
+        return;
+      }
+
+      if (!state.currentRollup || !state.currentProgressSections) {
+        componentsPreview.innerHTML = `<p>Choose a target to generate direct component work.</p>`;
+        componentsCount.textContent = "";
+        return;
+      }
+
+      componentsCount.textContent = `${formatNumber(state.currentProgressSections.directComponents.length)} rows`;
+      componentsPreview.innerHTML = renderProgressTableMarkup(
+        "Components to Produce",
+        state.currentProgressSections.directComponents,
+        "produced",
+      );
+      hydrateIcons(componentsPreview, state.iconArchive);
+    }
+
+    function patchRenderedProgressRow(typeID) {
+      const trackedLine = state.currentProgressLookup.get(Number(typeID));
+      if (!trackedLine) {
+        return;
+      }
+
+      function patchIn(container) {
+        const input = container?.querySelector(`[data-progress-have-type-id="${Number(typeID)}"]`);
+        const row = input?.closest("tr");
+        if (!row) {
+          return;
+        }
+
+        row.dataset.status = trackedLine.status;
+        const cells = row.querySelectorAll("td");
+        const remainCell = cells?.[3];
+        if (remainCell) {
+          remainCell.textContent = formatNumber(trackedLine.remaining);
+        }
+
+        const fill = row.querySelector(".progress-bar-fill");
+        if (fill) {
+          fill.className = `progress-bar-fill status-${trackedLine.status}`;
+          fill.style.width = `${trackedLine.progressPercent}%`;
+        }
+
+        const doneToggle = row.querySelector(`[data-progress-complete-type-id="${Number(typeID)}"]`);
+        if (doneToggle) {
+          doneToggle.checked = trackedLine.status === "ready";
+        }
+      }
+
+      patchIn(rawMaterialsPreview);
+      patchIn(componentsPreview);
     }
 
     function renderProgress() {
@@ -2044,29 +2882,8 @@
         return;
       }
 
-      if (!state.currentRollup || !state.currentProgressSections) {
-        rawMaterialsPreview.innerHTML = `<p>Choose a target to generate the mining list.</p>`;
-        componentsPreview.innerHTML = `<p>Choose a target to generate direct component work.</p>`;
-        rawMaterialsCount.textContent = "";
-        componentsCount.textContent = "";
-        return;
-      }
-
-      rawMaterialsCount.textContent = `${formatNumber(state.currentProgressSections.baseMaterials.length)} rows`;
-      componentsCount.textContent = `${formatNumber(state.currentProgressSections.directComponents.length)} rows`;
-      rawMaterialsPreview.innerHTML = renderProgressTableMarkup(
-        "Raw Materials to Mine",
-        state.currentProgressSections.baseMaterials,
-        "mined",
-      );
-      componentsPreview.innerHTML = renderProgressTableMarkup(
-        "Components to Produce",
-        state.currentProgressSections.directComponents,
-        "produced",
-      );
-
-      hydrateIcons(rawMaterialsPreview, state.iconArchive);
-      hydrateIcons(componentsPreview, state.iconArchive);
+      renderRawMaterialsProgress();
+      renderComponentsProgress();
     }
 
     function renderAll() {
@@ -2179,7 +2996,8 @@
     }
 
     function handleCatalogClick(event) {
-      const button = event.target.closest("[data-catalog-branch-key]");
+      const target = getEventTargetElement(event);
+      const button = target?.closest("[data-catalog-branch-key]");
       if (!button || !state.graph) {
         return;
       }
@@ -2191,7 +3009,8 @@
     }
 
     function handleSearchSelection(event) {
-      const button = event.target.closest("[data-type-id]");
+      const target = getEventTargetElement(event);
+      const button = target?.closest("[data-type-id]");
       if (!button) {
         return;
       }
@@ -2225,7 +3044,8 @@
     }
 
     function handleTreeClick(event) {
-      const recipeToggleButton = event.target.closest("[data-outline-recipe-toggle-type-id]");
+      const target = getEventTargetElement(event);
+      const recipeToggleButton = target?.closest("[data-outline-recipe-toggle-type-id]");
       if (recipeToggleButton) {
         const typeID = Number(recipeToggleButton.dataset.outlineRecipeToggleTypeId);
         state.activeRecipeChooserTypeID = Number(state.activeRecipeChooserTypeID) === typeID ? null : typeID;
@@ -2233,7 +3053,7 @@
         return;
       }
 
-      const toggleButton = event.target.closest("[data-toggle-node-id]");
+      const toggleButton = target?.closest("[data-toggle-node-id]");
       if (toggleButton) {
         const nodeId = toggleButton.dataset.toggleNodeId;
         if (state.expandedNodeIds.has(nodeId)) {
@@ -2245,7 +3065,7 @@
         return;
       }
 
-      const treeAction = event.target.closest("[data-tree-action]");
+      const treeAction = target?.closest("[data-tree-action]");
       if (!treeAction || !state.currentTree) {
         return;
       }
@@ -2261,7 +3081,8 @@
     }
 
     function handleOutlineRecipeChange(event) {
-      const select = event.target.closest("[data-outline-recipe-type-id]");
+      const target = getEventTargetElement(event);
+      const select = target?.closest("[data-outline-recipe-type-id]");
       if (!select) {
         return;
       }
@@ -2276,7 +3097,8 @@
     }
 
     function handleProgressInput(event) {
-      const input = event.target.closest("[data-progress-have-type-id]");
+      const target = getEventTargetElement(event);
+      const input = target?.closest("[data-progress-have-type-id]");
       if (!input || !state.currentPlanKey) {
         return;
       }
@@ -2291,10 +3113,26 @@
         renderActiveTargetCard,
         renderTree,
       });
+
+      patchRenderedProgressRow(typeID);
+      if (componentsPreview?.contains(input)) {
+        renderRawMaterialsProgress();
+      }
+    }
+
+    function handleProgressCommit(event) {
+      const target = getEventTargetElement(event);
+      const input = target?.closest("[data-progress-have-type-id]");
+      if (!input || !state.currentPlanKey) {
+        return;
+      }
+
+      renderProgress();
     }
 
     function handleProgressToggle(event) {
-      const toggle = event.target.closest("[data-progress-complete-type-id]");
+      const target = getEventTargetElement(event);
+      const toggle = target?.closest("[data-progress-complete-type-id]");
       if (!toggle || !state.currentPlanKey) {
         return;
       }
@@ -2313,13 +3151,13 @@
       state.treeDepth = treeDepthSelect?.value ? Number(treeDepthSelect.value) : null;
       state.hideCovered = Boolean(hideCoveredToggle?.checked);
       state.showRecipeDetails = Boolean(showRecipeDetailsToggle?.checked);
-      state.showBlueprintIds = Boolean(showBlueprintIdsToggle?.checked);
       state.showTrackedStatus = Boolean(showTrackedStatusToggle?.checked);
       renderTree();
     }
 
     function handleModeSwitch(event) {
-      const button = event.target.closest("[data-mode]");
+      const target = getEventTargetElement(event);
+      const button = target?.closest("[data-mode]");
       if (!button) {
         return;
       }
@@ -2333,7 +3171,8 @@
     }
 
     function handlePlannerLineEvent(event) {
-      const addButton = event.target.closest("[data-planner-add-type-id]");
+      const target = getEventTargetElement(event);
+      const addButton = target?.closest("[data-planner-add-type-id]");
       if (addButton) {
         plannerRuntime.addLine({
           outputTypeId: Number(addButton.dataset.plannerAddTypeId),
@@ -2343,14 +3182,14 @@
         return;
       }
 
-      const removeButton = event.target.closest("[data-planner-remove-line-id]");
+      const removeButton = target?.closest("[data-planner-remove-line-id]");
       if (removeButton) {
         plannerRuntime.removeLine(removeButton.dataset.plannerRemoveLineId);
         renderPlannerShell();
         return;
       }
 
-      const quantityInputNode = event.target.closest("[data-planner-quantity-line-id]");
+      const quantityInputNode = target?.closest("[data-planner-quantity-line-id]");
       if (quantityInputNode) {
         plannerRuntime.updateLineQuantity(
           quantityInputNode.dataset.plannerQuantityLineId,
@@ -2362,6 +3201,39 @@
 
     function handlePlannerCatalogSearch() {
       renderPlannerShell();
+    }
+
+    function handlePlannerDecisionEvent(event) {
+      const target = getEventTargetElement(event);
+      const decisionInput = target?.closest("[data-planner-decision-blueprint-id]");
+      if (!decisionInput) {
+        return;
+      }
+
+      plannerRuntime.selectRecipe(
+        decisionInput.dataset.plannerDecisionOptionTypeId,
+        decisionInput.dataset.plannerDecisionBlueprintId,
+      );
+      renderPlannerShell();
+    }
+
+    function handlePlannerOutputEvent(event) {
+      const target = getEventTargetElement(event);
+      const decisionRow = target?.closest("[data-planner-focus-decision-type-id]");
+      if (!decisionRow) {
+        return;
+      }
+
+      if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+      if (event.type === "keydown") {
+        event.preventDefault();
+      }
+
+      if (focusPlannerDecisionFromOutput(plannerRuntime, decisionRow.dataset.plannerFocusDecisionTypeId)) {
+        renderPlannerShell();
+      }
     }
 
     graphFileInput?.addEventListener("change", handleGraphFileSelection);
@@ -2376,13 +3248,14 @@
     treePreview?.addEventListener("change", handleOutlineRecipeChange);
     summaryRail?.addEventListener("click", handleTreeClick);
     rawMaterialsPreview?.addEventListener("input", handleProgressInput);
+    rawMaterialsPreview?.addEventListener("change", handleProgressCommit);
     rawMaterialsPreview?.addEventListener("change", handleProgressToggle);
     componentsPreview?.addEventListener("input", handleProgressInput);
+    componentsPreview?.addEventListener("change", handleProgressCommit);
     componentsPreview?.addEventListener("change", handleProgressToggle);
     treeDepthSelect?.addEventListener("change", handleTreeViewChange);
     hideCoveredToggle?.addEventListener("change", handleTreeViewChange);
     showRecipeDetailsToggle?.addEventListener("change", handleTreeViewChange);
-    showBlueprintIdsToggle?.addEventListener("change", handleTreeViewChange);
     showTrackedStatusToggle?.addEventListener("change", handleTreeViewChange);
     modeCalculatorButton?.addEventListener("click", handleModeSwitch);
     modePlannerButton?.addEventListener("click", handleModeSwitch);
@@ -2391,6 +3264,11 @@
     plannerCatalogResults?.addEventListener("click", handlePlannerLineEvent);
     plannerLines?.addEventListener("click", handlePlannerLineEvent);
     plannerLines?.addEventListener("input", handlePlannerLineEvent);
+    plannerRawMaterials?.addEventListener("click", handlePlannerOutputEvent);
+    plannerRawMaterials?.addEventListener("keydown", handlePlannerOutputEvent);
+    plannerComponents?.addEventListener("click", handlePlannerOutputEvent);
+    plannerComponents?.addEventListener("keydown", handlePlannerOutputEvent);
+    plannerDecisions?.addEventListener("change", handlePlannerDecisionEvent);
 
     plannerRuntime.load();
     renderPlannerShell();
@@ -2413,6 +3291,7 @@
     renderDependencyOutlineMarkup,
     renderProgressTableMarkup,
     renderSelectedTargetMarkup,
+    renderPlannerDecisionPanelMarkup,
     resolveRecipeChoice,
     rollupDependencyTree,
     saveStoredPlanProgress,
@@ -2420,6 +3299,7 @@
     searchPlannerCatalog,
     shouldDataSectionBeOpen,
     buildPlannerLineViewModels,
+    focusPlannerDecisionFromOutput,
     renderPlannerAggregatedOutputMarkup,
     renderPlannerLinesMarkup,
     updateProgressInputValue,

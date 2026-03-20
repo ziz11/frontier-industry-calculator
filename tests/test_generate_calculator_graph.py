@@ -144,6 +144,66 @@ class GenerateCalculatorGraphTests(unittest.TestCase):
             self.assertEqual([100], payload["baseMaterials"])
             self.assertEqual(output_path, result["output_path"])
 
+    def test_build_graph_derives_recipe_facility_prefixes_when_facilities_are_provided(self) -> None:
+        generator = load_generator_module()
+
+        types_data = {
+            "100": {"typeID": 100, "name": "Raw Ore A"},
+            "200": {"typeID": 200, "name": "Component A"},
+            "87162": {"typeID": 87162, "typeName_en-us": "Field Printer"},
+            "88067": {"typeID": 88067, "typeName_en-us": "Printer"},
+            "87120": {"typeID": 87120, "typeName_en-us": "Heavy Printer"},
+        }
+        blueprints_data = {
+            "1000": {
+                "blueprintID": 1000,
+                "primaryTypeID": 200,
+                "runTime": 5,
+                "inputs": [{"typeID": 100, "quantity": 2}],
+                "outputs": [{"typeID": 200, "quantity": 1}],
+            }
+        }
+        facilities_data = {
+            "87162": {"blueprints": [{"blueprintID": 1000}]},
+            "88067": {"blueprints": [{"blueprintID": 1000}]},
+            "87120": {"blueprints": [{"blueprintID": 1000}]},
+        }
+
+        graph = generator.build_calculator_graph(
+            snapshot="demo.snapshot",
+            types_data=types_data,
+            blueprints_data=blueprints_data,
+            facilities_data=facilities_data,
+        )
+
+        self.assertEqual(["L", "M", "P"], graph["recipeFacilityPrefixesByBlueprint"]["1000"])
+
+    def test_build_graph_uses_type_name_fallback_when_name_is_missing(self) -> None:
+        generator = load_generator_module()
+
+        types_data = {
+            "100": {"typeID": 100, "typeName_en-us": "Raw Ore A"},
+            "200": {"typeID": 200, "typeName_en-us": "Component A"},
+        }
+        blueprints_data = {
+            "1000": {
+                "blueprintID": 1000,
+                "primaryTypeID": 200,
+                "runTime": 5,
+                "inputs": [{"typeID": 100, "quantity": 2}],
+                "outputs": [{"typeID": 200, "quantity": 1}],
+            }
+        }
+
+        graph = generator.build_calculator_graph(
+            snapshot="demo.snapshot",
+            types_data=types_data,
+            blueprints_data=blueprints_data,
+        )
+
+        self.assertEqual("Raw Ore A", graph["items"]["100"]["name"])
+        self.assertEqual("Component A", graph["items"]["200"]["name"])
+
 
 if __name__ == "__main__":
     unittest.main()

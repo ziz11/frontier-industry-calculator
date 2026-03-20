@@ -146,6 +146,14 @@ test("searchCraftableItems supports exact typeID lookup for craftable items", ()
   );
 });
 
+test("searchCraftableItems still returns craftable entries when item names are missing", () => {
+  const graphWithMissingNames = JSON.parse(JSON.stringify(sampleGraph));
+  graphWithMissingNames.items[400].name = null;
+
+  const results = searchCraftableItems(graphWithMissingNames, "400");
+  assert.deepEqual(results.map((entry) => entry.typeID), [400]);
+});
+
 test("buildCatalogTree groups craftable items by category and group with numeric fallback labels", () => {
   const catalog = buildCatalogTree(sampleGraph);
 
@@ -194,9 +202,19 @@ test("createRecipeSummary scales quantity-driven runtime, inputs, and outputs", 
 
 test("getAvailableRecipesForType and resolveRecipeChoice expose and select alternative recipes", () => {
   const recipes = getAvailableRecipesForType(sampleGraph, 200);
+  const graphWithPrefixPriority = {
+    ...sampleGraph,
+    recipeFacilityPrefixesByBlueprint: {
+      1000: ["P"],
+      1002: ["L"],
+    },
+  };
+  const prioritizedRecipes = getAvailableRecipesForType(graphWithPrefixPriority, 200);
 
   assert.deepEqual(recipes.map((recipe) => recipe.blueprintID), [1000, 1002]);
+  assert.deepEqual(prioritizedRecipes.map((recipe) => recipe.blueprintID), [1002, 1000]);
   assert.equal(resolveRecipeChoice(sampleGraph, 200, {}).blueprintID, 1000);
+  assert.equal(resolveRecipeChoice(graphWithPrefixPriority, 200, {}).blueprintID, 1002);
   assert.equal(resolveRecipeChoice(sampleGraph, 200, { 200: 1002 }).blueprintID, 1002);
 });
 
@@ -265,6 +283,49 @@ test("buildProgressSections creates quantitative progress lines for base and dir
   assert.equal(sections.directComponents[0].have, 2);
   assert.equal(sections.directComponents[0].remaining, 0);
   assert.equal(sections.directComponents[0].progressPercent, 100);
+});
+
+test("buildProgressSections can recalculate base material needs from remaining direct components", () => {
+  const tree = buildDependencyTree(sampleGraph, 400, 1, { 200: 1002 });
+  const rollup = rollupDependencyTree(tree);
+
+  const sections = buildProgressSections(
+    rollup,
+    {
+      100: 1,
+      200: 2,
+    },
+    {
+      graph: sampleGraph,
+      tree,
+      recipeSelections: { 200: 1002 },
+    },
+  );
+
+  assert.equal(sections.baseMaterials[0].typeID, 100);
+  assert.equal(sections.baseMaterials[0].need, 3);
+  assert.equal(sections.baseMaterials[0].have, 1);
+  assert.equal(sections.baseMaterials[0].remaining, 2);
+});
+
+test("buildProgressSections dynamic base material recalculation keeps recipe batch rounding", () => {
+  const tree = buildDependencyTree(sampleGraph, 400, 1, { 200: 1002 });
+  const rollup = rollupDependencyTree(tree);
+
+  const sections = buildProgressSections(
+    rollup,
+    {
+      200: 1,
+    },
+    {
+      graph: sampleGraph,
+      tree,
+      recipeSelections: { 200: 1002 },
+    },
+  );
+
+  assert.equal(sections.baseMaterials[0].typeID, 100);
+  assert.equal(sections.baseMaterials[0].need, 8);
 });
 
 test("buildProgressSections keeps direct raw inputs out of components to produce", () => {
@@ -338,14 +399,40 @@ test("buildPlanStorageKey keys plan persistence by snapshot target quantity and 
   assert.notEqual(key, differentQuantityKey);
 });
 
-test("buildRecipeOptionLabel includes blueprint id output runtime and key input hint", () => {
+test("buildRecipeOptionLabel includes output runtime and key input hint without blueprint id", () => {
   const recipe = sampleGraph.recipes[1002];
   const label = buildRecipeOptionLabel(sampleGraph, recipe, 200);
 
-  assert.match(label, /BP 1002/);
+  assert.doesNotMatch(label, /BP 1002/);
   assert.match(label, /out 2/);
   assert.match(label, /6s/);
   assert.match(label, /Raw Ore A x5/);
+});
+
+test("buildRecipeOptionLabel prepends a single facility prefix when recipe metadata is present", () => {
+  const recipe = sampleGraph.recipes[1002];
+  const graphWithPrefixes = {
+    ...sampleGraph,
+    recipeFacilityPrefixesByBlueprint: {
+      1002: ["P"],
+    },
+  };
+
+  const label = buildRecipeOptionLabel(graphWithPrefixes, recipe, 200);
+  assert.match(label, /^\[P\] out 2/);
+});
+
+test("buildRecipeOptionLabel normalizes multi-facility prefixes into L/M/S/P order", () => {
+  const recipe = sampleGraph.recipes[1002];
+  const graphWithPrefixes = {
+    ...sampleGraph,
+    recipeFacilityPrefixesByBlueprint: {
+      1002: ["L", "P", "M", "S"],
+    },
+  };
+
+  const label = buildRecipeOptionLabel(graphWithPrefixes, recipe, 200);
+  assert.match(label, /^\[L\/M\/S\/P\] out 2/);
 });
 
 test("renderSelectedTargetMarkup highlights alternate recipe counts for selected targets", () => {
@@ -427,7 +514,8 @@ test("renderDependencyOutlineMarkup shows inline recipe chooser only for the act
   });
 
   assert.match(collapsedMarkup, /2 recipes/);
-  assert.match(collapsedMarkup, /BP 1000 · out 1 · 5s/);
+  assert.match(collapsedMarkup, /out 1 · 5s/);
+  assert.doesNotMatch(collapsedMarkup, /BP 1000/);
   assert.doesNotMatch(collapsedMarkup, /data-outline-recipe-type-id="200"/);
 
   const chooserMarkup = renderDependencyOutlineMarkup(tree, new Map(), {
@@ -442,8 +530,32 @@ test("renderDependencyOutlineMarkup shows inline recipe chooser only for the act
   });
 
   assert.match(chooserMarkup, /data-outline-recipe-type-id="200"/);
-  assert.match(chooserMarkup, /BP 1002 · out 2 · 6s · Raw Ore A x5/);
+  assert.match(chooserMarkup, /out 2 · 6s · Raw Ore A x5/);
+  assert.doesNotMatch(chooserMarkup, /BP 1002/);
   assert.match(chooserMarkup, /Applies to all occurrences of this item in the current plan/);
+});
+
+test("renderDependencyOutlineMarkup includes facility prefix in recipe choice pill when available", () => {
+  const graphWithPrefixes = {
+    ...sampleGraph,
+    recipeFacilityPrefixesByBlueprint: {
+      1000: ["M"],
+      1002: ["L"],
+    },
+  };
+  const tree = buildDependencyTree(graphWithPrefixes, 400, 1, {});
+  const markup = renderDependencyOutlineMarkup(tree, new Map(), {
+    hideCovered: false,
+    maxDepth: null,
+    showBlueprintIds: true,
+    showRecipeDetails: false,
+    showTrackedStatus: true,
+    expandedNodeIds: new Set([tree.nodeId, ...tree.children.map((child) => child.nodeId)]),
+    graph: graphWithPrefixes,
+  });
+
+  assert.match(markup, /\[L\] out 2 · 6s/);
+  assert.doesNotMatch(markup, /BP 1000/);
 });
 
 test("buildDependencyTree stops recursion on cyclic dependencies", () => {
@@ -487,6 +599,34 @@ test("buildGraphFromStrippedData creates a runtime graph from stripped source fi
   assert.equal(graph.items[200].isCraftable, true);
   assert.deepEqual(graph.recipesByOutput[200], [1000]);
   assert.deepEqual(graph.baseMaterials, [100]);
+});
+
+test("buildGraphFromStrippedData derives recipe facility prefixes from optional facilities data", () => {
+  const strippedTypes = {
+    100: { typeID: 100, name: "Raw Ore A", groupID: 10, categoryID: 1, mass: 1, volume: 1 },
+    200: { typeID: 200, name: "Composite Plate", groupID: 20, categoryID: 2, mass: 1.5, volume: 0.4 },
+    87162: { typeID: 87162, "typeName_en-us": "Field Printer" },
+    88067: { typeID: 88067, "typeName_en-us": "Printer" },
+    87120: { typeID: 87120, "typeName_en-us": "Heavy Printer" },
+  };
+  const strippedBlueprints = {
+    1000: {
+      blueprintID: 1000,
+      primaryTypeID: 200,
+      runTime: 5,
+      inputs: [{ typeID: 100, quantity: 2 }],
+      outputs: [{ typeID: 200, quantity: 1 }],
+    },
+  };
+  const facilitiesData = {
+    87162: { blueprints: [{ blueprintID: 1000 }] },
+    88067: { blueprints: [{ blueprintID: 1000 }] },
+    87120: { blueprints: [{ blueprintID: 1000 }] },
+  };
+
+  const graph = buildGraphFromStrippedData("sample.snapshot", strippedTypes, strippedBlueprints, facilitiesData);
+
+  assert.deepEqual(graph.recipeFacilityPrefixesByBlueprint[1000], ["L", "M", "P"]);
 });
 
 test("updateProgressInputValue updates progress state without requiring a progress-table rerender", () => {
