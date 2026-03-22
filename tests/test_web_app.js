@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 
 const {
   buildManagedDefaultRecipePresets,
+  buildManagedDefaultPresetCardMarkup,
   buildGraphFromStrippedData,
   buildDependencyTree,
   buildCatalogTree,
@@ -341,6 +342,23 @@ test("mergeManagedDefaultRecipeSelections preserves isolated stored overrides pe
     520: 5202,
     530: 5301,
   });
+});
+
+test("buildManagedDefaultPresetCardMarkup exposes the root path summary and hides subrecipes until opened", () => {
+  const preset = buildManagedDefaultRecipePresets(managedDefaultGraph, {})[0];
+
+  const closedMarkup = buildManagedDefaultPresetCardMarkup(preset, managedDefaultGraph, {
+    isOpen: false,
+  });
+  const openMarkup = buildManagedDefaultPresetCardMarkup(preset, managedDefaultGraph, {
+    isOpen: true,
+  });
+
+  assert.match(closedMarkup, /\[S\] path/);
+  assert.match(closedMarkup, /Custom path/);
+  assert.doesNotMatch(closedMarkup, /outline-list/);
+  assert.match(openMarkup, /outline-list/);
+  assert.match(openMarkup, /data-managed-default-card-key="reinforced-alloys"/);
 });
 
 test("createRecipeSummary handles ceil runs and preserves byproducts for multi-output recipes", () => {

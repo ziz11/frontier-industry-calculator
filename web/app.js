@@ -335,6 +335,73 @@
     }
   }
 
+  function buildManagedDefaultPresetCardMarkup(preset, graph, options = {}) {
+    if (!preset) {
+      return "";
+    }
+
+    const isOpen = Boolean(options.isOpen);
+    const rootPrefixTag = getRecipeFacilityPrefixTag(graph, preset.rootRecipe) || "Base";
+    const currentPathLabel = preset.isCustomized ? "Custom path" : "S path";
+    const currentStateValue = preset.isCustomized ? "overridden" : "default";
+    const treeMarkup = isOpen
+      ? renderDependencyOutlineMarkup(preset.tree, new Map(), {
+          graph,
+          showRecipeDetails: false,
+          showTrackedStatus: false,
+          activeRecipeChooserTypeID:
+            options.activeManagedDefaultRecipeChooserRootKey === preset.key
+              ? options.activeManagedDefaultRecipeChooserTypeID
+              : null,
+          expandedNodeIds: options.expandedNodeIds || getDefaultExpandedNodeIds(preset.tree),
+          interactionScope: "default-preset",
+          interactionRootKey: preset.key,
+        })
+      : "";
+
+    return `
+      <section class="managed-default-card planner-decision-group${isOpen ? " is-open" : ""}" data-managed-default-card-key="${preset.key}">
+        <div class="managed-default-card-head planner-decision-group-head">
+          <div class="planner-decision-head-main managed-default-summary-main">
+            ${renderItemMarkup(preset.name, preset.typeID)}
+            <div class="managed-default-summary-copy">
+              <span class="managed-default-summary-line">${escapeHtml(rootPrefixTag)} path</span>
+              <span class="managed-default-summary-line managed-default-summary-line-muted">
+                ${escapeHtml(currentPathLabel)}
+              </span>
+            </div>
+          </div>
+          <div class="managed-default-summary-side">
+            <span class="planner-decision-state-pill" data-state="${currentStateValue}">${escapeHtml(currentPathLabel)}</span>
+            <button
+              type="button"
+              class="mini-button managed-default-expander"
+              data-managed-default-card-key="${preset.key}"
+              aria-expanded="${String(isOpen)}"
+              aria-label="${escapeHtml(isOpen ? `Collapse ${preset.name}` : `Expand ${preset.name}`)}"
+            >
+              ${isOpen ? "−" : "+"}
+            </button>
+          </div>
+        </div>
+        <div class="managed-default-path-row" aria-hidden="true">
+          <span class="managed-default-path-chip is-selected">${escapeHtml(rootPrefixTag)} path</span>
+          <span class="managed-default-path-chip${preset.isCustomized ? " is-custom" : ""}">Custom path</span>
+        </div>
+        ${
+          isOpen
+            ? `
+              <div class="managed-default-body">
+                <p class="planner-decision-scope-note">Open the tree to adjust alternate routes for this preset.</p>
+                <div class="managed-default-tree">${treeMarkup}</div>
+              </div>
+            `
+            : ""
+        }
+      </section>
+    `;
+  }
+
   function buildGraphFromStrippedData(snapshot, typesData, blueprintsData, facilitiesData = null) {
     const recipes = {};
     const recipesByOutput = {};
@@ -3449,52 +3516,13 @@
       defaultRecipePresetsList.innerHTML = state.managedDefaultRecipePresets
         .map((preset) => {
           const isOpen = state.managedDefaultExpandedPresetKeys.has(preset.key);
-          const rootPrefixTag = getRecipeFacilityPrefixTag(state.graph, preset.rootRecipe) || "Base";
-          const treeMarkup = isOpen
-            ? renderDependencyOutlineMarkup(preset.tree, new Map(), {
-                graph: state.graph,
-                showRecipeDetails: false,
-                showTrackedStatus: false,
-                activeRecipeChooserTypeID:
-                  state.activeManagedDefaultRecipeChooserRootKey === preset.key
-                    ? state.activeManagedDefaultRecipeChooserTypeID
-                    : null,
-                expandedNodeIds: state.managedDefaultExpandedNodeIdsByRoot[preset.key] || getDefaultExpandedNodeIds(preset.tree),
-                interactionScope: "default-preset",
-                interactionRootKey: preset.key,
-              })
-            : "";
-
-          return `
-            <section class="managed-default-card${isOpen ? " is-open" : ""}">
-              <button
-                type="button"
-                class="managed-default-summary"
-                data-managed-default-card-key="${preset.key}"
-                aria-expanded="${String(isOpen)}"
-              >
-                <span class="managed-default-summary-main">
-                  ${renderItemMarkup(preset.name, preset.typeID)}
-                  <span class="managed-default-summary-copy">
-                    <span class="managed-default-summary-line">${escapeHtml(rootPrefixTag)} path</span>
-                    <span class="managed-default-summary-line managed-default-summary-line-muted">
-                      ${preset.isCustomized ? "Custom path" : "Auto S preset"}
-                    </span>
-                  </span>
-                </span>
-                <span class="managed-default-summary-side">
-                  <span class="managed-default-caret">${isOpen ? "−" : "+"}</span>
-                </span>
-              </button>
-              ${isOpen
-                ? `
-                  <div class="managed-default-body">
-                    <div class="managed-default-tree">${treeMarkup}</div>
-                  </div>
-                `
-                : ""}
-            </section>
-          `;
+          return buildManagedDefaultPresetCardMarkup(preset, state.graph, {
+            isOpen,
+            activeManagedDefaultRecipeChooserRootKey: state.activeManagedDefaultRecipeChooserRootKey,
+            activeManagedDefaultRecipeChooserTypeID: state.activeManagedDefaultRecipeChooserTypeID,
+            expandedNodeIds:
+              state.managedDefaultExpandedNodeIdsByRoot[preset.key] || getDefaultExpandedNodeIds(preset.tree),
+          });
         })
         .join("");
       hydrateIcons(defaultRecipePresetsList, state.iconArchive);
@@ -4353,6 +4381,7 @@
     buildGraphFromStrippedData,
     buildDependencyTree,
     buildManagedDefaultRecipePresets,
+    buildManagedDefaultPresetCardMarkup,
     buildPlanStorageKey,
     buildProgressSections,
     buildRecipeOptionLabel,
