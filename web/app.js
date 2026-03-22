@@ -681,11 +681,23 @@
     return filterCatalogItems(graph, null, query, limit);
   }
 
-  function searchPlannerCatalog(graph, query, limit = 30) {
+  function searchPlannerCatalog(graph, branchOrQuery, queryOrLimit, limit = 30) {
     if (!graph) {
       return [];
     }
-    return filterCatalogItems(graph, null, query, limit);
+
+    const hasBranchArgument =
+      branchOrQuery !== null && typeof branchOrQuery === "object" && !Array.isArray(branchOrQuery);
+    const branch = hasBranchArgument ? branchOrQuery : null;
+    const query = hasBranchArgument ? queryOrLimit : branchOrQuery;
+    const resolvedLimit =
+      typeof queryOrLimit === "number" && !Number.isNaN(queryOrLimit)
+        ? queryOrLimit
+        : typeof limit === "number" && !Number.isNaN(limit)
+          ? limit
+          : 30;
+
+    return filterCatalogItems(graph, branch, query, resolvedLimit);
   }
 
   function normalizePlannerLineQuantity(value) {
@@ -3080,7 +3092,7 @@
       const model = plannerRuntime.getRenderModel();
       const isPlanner = model.mode === "planner";
       const plannerQuery = plannerCatalogSearch?.value || "";
-      const plannerSearchResults = searchPlannerCatalog(state.graph, plannerQuery, 30);
+      const plannerSearchResults = searchPlannerCatalog(state.graph, getSelectedCatalogBranch(), plannerQuery, 30);
       if (calculatorShell) {
         calculatorShell.hidden = isPlanner;
       }

@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 
 const {
   createPlannerRuntime,
+  buildCatalogTree,
   searchPlannerCatalog,
   renderPlannerLinesMarkup,
   buildPlannerLineViewModels,
@@ -37,8 +38,8 @@ const sampleGraph = {
     100: { typeID: 100, name: "Dense Ore", isCraftable: false },
     101: { typeID: 101, name: "Signal Core", isCraftable: false },
     102: { typeID: 102, name: "Gas Cell", isCraftable: false },
-    200: { typeID: 200, name: "Composite Plate", isCraftable: true },
-    300: { typeID: 300, name: "Shield Relay", isCraftable: true },
+    200: { typeID: 200, name: "Composite Plate", isCraftable: true, categoryID: 2, groupID: 20 },
+    300: { typeID: 300, name: "Shield Relay", isCraftable: true, categoryID: 2, groupID: 21 },
   },
   recipes: {
     1000: {
@@ -78,6 +79,18 @@ test("add line from planner search", () => {
 
   assert.equal(runtime.getRenderModel().plannerState.planLines.length, 1);
   assert.equal(runtime.getRenderModel().plannerState.planLines[0].outputTypeId, 200);
+});
+
+test("planner catalog search scopes results to the selected branch", () => {
+  const catalog = buildCatalogTree(sampleGraph);
+  const categoryTwoBranch = catalog.nodes.find((node) => node.key === "category:2");
+  const groupTwentyBranch = categoryTwoBranch.children.find((node) => node.key === "group:20");
+
+  const categoryResults = searchPlannerCatalog(sampleGraph, categoryTwoBranch, "");
+  const groupResults = searchPlannerCatalog(sampleGraph, groupTwentyBranch, "");
+
+  assert.deepEqual(categoryResults.map((item) => item.typeID), [200, 300]);
+  assert.deepEqual(groupResults.map((item) => item.typeID), [200]);
 });
 
 test("update quantity mutates planner line quantity", () => {
