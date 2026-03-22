@@ -535,6 +535,13 @@ h3 {
   position: absolute;
   inset: 0;
   background: rgba(0, 0, 0, 0.56);
+}
+
+.drawer-shell .overlay-backdrop {
+  backdrop-filter: none;
+}
+
+.modal-shell .overlay-backdrop {
   backdrop-filter: blur(6px);
 }
 
