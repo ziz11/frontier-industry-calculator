@@ -15,13 +15,17 @@ const {
   getProgressStatus,
   loadStoredPlanProgress,
   renderDependencyOutlineMarkup,
-  renderProgressTableMarkup,
+  renderCompactProgressListMarkup,
   renderSelectedTargetMarkup,
   resolveRecipeChoice,
   rollupDependencyTree,
   saveStoredPlanProgress,
   searchCraftableItems,
   shouldDataSectionBeOpen,
+  buildDependencyPipelineGroups,
+  buildNextActions,
+  getBottleneckLine,
+  summarizeWorkspaceHeader,
   updateProgressInputValue,
   createRecipeSummary,
 } = require("../web/app.js");
@@ -586,8 +590,58 @@ test("shouldDataSectionBeOpen is true before a graph is loaded and false after",
   assert.equal(shouldDataSectionBeOpen(sampleGraph), false);
 });
 
-test("renderProgressTableMarkup uses dense table rows instead of per-item cards", () => {
-  const markup = renderProgressTableMarkup("Raw Materials to Mine", [
+test("buildNextActions prioritizes the largest mining and production gaps", () => {
+  const actions = buildNextActions({
+    baseMaterials: [
+      { typeID: 100, name: "Raw Ore A", remaining: 5, progressPercent: 37.5, status: "partial" },
+      { typeID: 500, name: "Raw Ore B", remaining: 9, progressPercent: 10, status: "missing" },
+    ],
+    directComponents: [
+      { typeID: 200, name: "Composite Plate", remaining: 2, progressPercent: 50, status: "partial" },
+      { typeID: 300, name: "Shield Relay", remaining: 4, progressPercent: 0, status: "missing" },
+    ],
+  });
+
+  assert.deepEqual(actions, [
+    { kind: "mine", typeID: 500, name: "Raw Ore B", remaining: 9 },
+    { kind: "produce", typeID: 300, name: "Shield Relay", remaining: 4 },
+  ]);
+});
+
+test("getBottleneckLine returns the highest remaining outstanding line across sections", () => {
+  const bottleneck = getBottleneckLine({
+    baseMaterials: [
+      { typeID: 100, name: "Raw Ore A", remaining: 5, progressPercent: 37.5, status: "partial" },
+    ],
+    directComponents: [
+      { typeID: 300, name: "Shield Relay", remaining: 7, progressPercent: 0, status: "missing" },
+    ],
+  });
+
+  assert.equal(bottleneck.typeID, 300);
+  assert.equal(bottleneck.remaining, 7);
+});
+
+test("summarizeWorkspaceHeader derives target progress and eta from current summary and tracked sections", () => {
+  const tree = buildDependencyTree(sampleGraph, 400, 1, {});
+  const summary = summarizeWorkspaceHeader({
+    currentSummary: createRecipeSummary(sampleGraph, 400, 1, {}),
+    currentRollup: rollupDependencyTree(tree),
+    currentProgressSections: {
+      allLines: [
+        { need: 8, have: 2 },
+        { need: 2, have: 1 },
+      ],
+    },
+  });
+
+  assert.equal(summary.targetName, "Composite Hull");
+  assert.equal(summary.progressPercent, 30);
+  assert.equal(summary.etaLabel, "24s");
+});
+
+test("renderCompactProgressListMarkup renders a capped vertical list without tables", () => {
+  const markup = renderCompactProgressListMarkup("Raw Materials", [
     {
       typeID: 100,
       name: "Raw Ore A",
@@ -597,12 +651,98 @@ test("renderProgressTableMarkup uses dense table rows instead of per-item cards"
       progressPercent: 37.5,
       status: "partial",
     },
-  ], "mined");
+    {
+      typeID: 200,
+      name: "Raw Ore B",
+      need: 10,
+      have: 0,
+      remaining: 10,
+      progressPercent: 0,
+      status: "missing",
+    },
+    {
+      typeID: 300,
+      name: "Raw Ore C",
+      need: 10,
+      have: 0,
+      remaining: 10,
+      progressPercent: 0,
+      status: "missing",
+    },
+    {
+      typeID: 400,
+      name: "Raw Ore D",
+      need: 10,
+      have: 0,
+      remaining: 10,
+      progressPercent: 0,
+      status: "missing",
+    },
+    {
+      typeID: 500,
+      name: "Raw Ore E",
+      need: 10,
+      have: 0,
+      remaining: 10,
+      progressPercent: 0,
+      status: "missing",
+    },
+    {
+      typeID: 600,
+      name: "Raw Ore F",
+      need: 10,
+      have: 0,
+      remaining: 10,
+      progressPercent: 0,
+      status: "missing",
+    },
+  ], { expanded: false, emptyMessage: "Nothing queued" });
 
-  assert.match(markup, /<table/);
-  assert.match(markup, /class="progress-row"/);
-  assert.doesNotMatch(markup, /progress-line/);
-  assert.doesNotMatch(markup, /tree-card/);
+  assert.match(markup, /progress-list/);
+  assert.match(markup, /Raw Ore B/);
+  assert.doesNotMatch(markup, /Raw Ore A/);
+  assert.match(markup, /Show all/);
+  assert.match(markup, /5 items shown/);
+  assert.doesNotMatch(markup, /<table/);
+  assert.doesNotMatch(markup, /progress-row/);
+});
+
+test("renderCompactProgressListMarkup supports inline progress editing controls", () => {
+  const markup = renderCompactProgressListMarkup("Materials", [
+    {
+      typeID: 100,
+      name: "Raw Ore A",
+      need: 8,
+      have: 3,
+      remaining: 5,
+      progressPercent: 37.5,
+      status: "partial",
+    },
+  ], {
+    expanded: true,
+    listKey: "materials",
+    interactive: true,
+    doneLabel: "mined",
+  });
+
+  assert.match(markup, /progress-list-row-compact/);
+  assert.match(markup, /progress-done-pill/);
+  assert.match(markup, /data-progress-have-type-id="100"/);
+  assert.match(markup, /data-progress-complete-type-id="100"/);
+  assert.match(markup, /Need 8/);
+  assert.match(markup, /Mined/);
+  assert.doesNotMatch(markup, /<table/);
+});
+
+test("buildDependencyPipelineGroups maps a dependency tree into mining processing assembly and final stages", () => {
+  const tree = buildDependencyTree(sampleGraph, 400, 1, {});
+  const pipeline = buildDependencyPipelineGroups(tree);
+
+  assert.deepEqual(Object.keys(pipeline), ["mining", "processing", "assembly", "final"]);
+  assert.deepEqual(pipeline.mining.map((entry) => entry.typeID), [100]);
+  assert.deepEqual(pipeline.assembly.map((entry) => entry.typeID).sort((left, right) => left - right), [200, 300]);
+  assert.deepEqual(pipeline.processing, []);
+  assert.deepEqual(pipeline.final.map((entry) => entry.typeID), [400]);
 });
 
 test("renderDependencyOutlineMarkup uses outline rows instead of boxed node cards", () => {
@@ -617,9 +757,13 @@ test("renderDependencyOutlineMarkup uses outline rows instead of boxed node card
   });
 
   assert.match(markup, /class="outline-row"/);
+  assert.match(markup, /data-outline-row-toggle-node-id="/);
+  assert.match(markup, /class="outline-row-body/);
+  assert.match(markup, /class="outline-chevron/);
   assert.match(markup, /2 recipes/);
   assert.doesNotMatch(markup, /tree-card/);
   assert.doesNotMatch(markup, /progress-line/);
+  assert.doesNotMatch(markup, /class="outline-toggle"/);
 });
 
 test("renderDependencyOutlineMarkup shows inline recipe chooser only for the active multi-recipe row", () => {

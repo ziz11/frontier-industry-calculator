@@ -1365,6 +1365,331 @@
     return lookup;
   }
 
+  function sortOutstandingLines(lines = []) {
+    return (Array.isArray(lines) ? lines : [])
+      .filter((line) => Number(line?.remaining) > 0)
+      .slice()
+      .sort((left, right) => {
+        const remainingDiff = Number(right?.remaining || 0) - Number(left?.remaining || 0);
+        if (remainingDiff !== 0) {
+          return remainingDiff;
+        }
+        return String(left?.name || "").localeCompare(String(right?.name || ""));
+      });
+  }
+
+  function buildNextActions(progressSections = {}) {
+    const actions = [];
+    const topMaterial = sortOutstandingLines(progressSections?.baseMaterials || [])[0];
+    const topComponent = sortOutstandingLines(progressSections?.directComponents || [])[0];
+
+    if (topMaterial) {
+      actions.push({
+        kind: "mine",
+        typeID: Number(topMaterial.typeID),
+        name: topMaterial.name,
+        remaining: Number(topMaterial.remaining) || 0,
+      });
+    }
+
+    if (topComponent) {
+      actions.push({
+        kind: "produce",
+        typeID: Number(topComponent.typeID),
+        name: topComponent.name,
+        remaining: Number(topComponent.remaining) || 0,
+      });
+    }
+
+    return actions;
+  }
+
+  function getBottleneckLine(progressSections = {}) {
+    return sortOutstandingLines([
+      ...(progressSections?.baseMaterials || []),
+      ...(progressSections?.directComponents || []),
+    ])[0] || null;
+  }
+
+  function summarizeWorkspaceHeader({ currentSummary = null, currentProgressSections = null, currentRollup = null } = {}) {
+    const trackedLines = currentProgressSections?.allLines || [];
+    const totals = trackedLines.reduce(
+      (summary, line) => {
+        summary.need += Math.max(0, Number(line?.need) || 0);
+        summary.have += Math.max(0, Number(line?.have) || 0);
+        return summary;
+      },
+      { need: 0, have: 0 },
+    );
+    const progressPercent = totals.need > 0
+      ? Math.round(Math.min(100, (totals.have / totals.need) * 100))
+      : 0;
+
+    return {
+      targetName: currentSummary?.item?.name || "No target selected",
+      progressPercent,
+      etaLabel: currentSummary ? formatRuntime(currentRollup?.totalRuntime ?? currentSummary.totalRuntime ?? 0) : "--",
+    };
+  }
+
+  function renderActionCardsMarkup(actions = []) {
+    if (!actions.length) {
+      return `<p class="workspace-empty">Choose a target to surface immediate work.</p>`;
+    }
+
+    return actions
+      .map((action) => `
+        <article class="action-card" data-kind="${escapeHtml(action.kind)}">
+          <span class="action-kicker">${action.kind === "mine" ? "Mine" : "Produce"}</span>
+          <div class="action-title">${escapeHtml(action.name)}</div>
+          <div class="action-meta">${formatNumber(action.remaining)} remaining</div>
+        </article>
+      `)
+      .join("");
+  }
+
+  function renderBottleneckMarkup(line) {
+    if (!line) {
+      return `<p class="workspace-empty">No bottleneck yet.</p>`;
+    }
+
+    return `
+      <article class="bottleneck-card">
+        <span class="action-kicker">Most Constrained</span>
+        <div class="bottleneck-title">${escapeHtml(line.name)}</div>
+        <div class="bottleneck-meta">${formatNumber(line.remaining)} left · ${formatNumber(line.progressPercent || 0)}% tracked</div>
+      </article>
+    `;
+  }
+
+  function renderCompactProgressListMarkup(title, lines = [], options = {}) {
+    const sortedLines = sortOutstandingLines(lines);
+    const expanded = Boolean(options?.expanded);
+    const visibleLines = expanded ? sortedLines : sortedLines.slice(0, 5);
+
+    if (!sortedLines.length) {
+      return `<div class="progress-list"><p class="workspace-empty">${escapeHtml(options?.emptyMessage || `No items in ${title}`)}</p></div>`;
+    }
+
+    const rowsMarkup = visibleLines
+      .map((line) => `
+        <article class="progress-list-row progress-list-row-compact" data-progress-line-type-id="${line.typeID}">
+          <div class="progress-list-main">
+            <div class="progress-list-copy">
+              <div class="progress-list-name">${renderItemMarkup(line.name, line.typeID)}</div>
+            </div>
+            <div class="progress-list-stats">
+              <span>Need ${formatNumber(line.need)}</span>
+              <span>${escapeHtml(String(options?.doneLabel || "done")).replace(/^./, (value) => value.toUpperCase())} ${formatNumber(line.have)}</span>
+            </div>
+            <div class="progress-track" aria-hidden="true">
+              <span class="progress-track-fill" style="width:${Math.max(0, Math.min(100, Number(line.progressPercent) || 0))}%"></span>
+            </div>
+          </div>
+          <div class="progress-list-side">
+            <div class="progress-list-amount">${formatNumber(line.remaining)} left</div>
+            ${options?.interactive
+              ? `
+              <div class="progress-list-controls progress-list-controls-compact">
+                <label class="progress-inline-field">
+                  <span class="field-label">${escapeHtml(options?.doneLabel || "done")}</span>
+                  <input
+                    class="number-input progress-inline-input"
+                    type="number"
+                    min="0"
+                    step="any"
+                    value="${Number(line.have) || 0}"
+                    aria-label="${escapeHtml(options?.doneLabel || "done")} ${escapeHtml(line.name)}"
+                    data-progress-have-type-id="${line.typeID}"
+                  />
+                </label>
+                <label class="progress-inline-check progress-done-pill">
+                  <input
+                    type="checkbox"
+                    aria-label="Complete ${escapeHtml(line.name)}"
+                    data-progress-complete-type-id="${line.typeID}"
+                    ${line.status === "ready" ? "checked" : ""}
+                  />
+                  <span>Done</span>
+                </label>
+              </div>
+            `
+              : ""}
+          </div>
+        </article>
+      `)
+      .join("");
+
+    const footerMarkup = sortedLines.length > 5
+      ? `
+        <div class="progress-list-footer">
+          <span class="progress-list-count">${formatNumber(visibleLines.length)} items shown</span>
+          <button type="button" class="mini-button" data-progress-list-toggle="${escapeHtml(options?.listKey || "")}">
+            ${expanded ? "Show less" : "Show all"}
+          </button>
+        </div>
+      `
+      : "";
+
+    return `
+      <div class="progress-list">
+        <div class="progress-list-body">${rowsMarkup}</div>
+        ${footerMarkup}
+      </div>
+    `;
+  }
+
+  function aggregatePipelineEntries(targetList, node) {
+    const safeTypeID = Number(node?.typeID);
+    if (!Number.isFinite(safeTypeID)) {
+      return;
+    }
+
+    const existing = targetList.get(safeTypeID) || {
+      typeID: safeTypeID,
+      name: node?.item?.name || `Type ${safeTypeID}`,
+      quantity: 0,
+    };
+    existing.quantity += Math.max(0, Number(node?.requestedQuantity) || 0);
+    targetList.set(safeTypeID, existing);
+  }
+
+  function finalizePipelineEntries(map) {
+    return Array.from(map.values()).sort((left, right) => String(left.name).localeCompare(String(right.name)));
+  }
+
+  function buildDependencyPipelineGroups(tree) {
+    const mining = new Map();
+    const processing = new Map();
+    const assembly = new Map();
+    const final = new Map();
+
+    if (!tree) {
+      return {
+        mining: [],
+        processing: [],
+        assembly: [],
+        final: [],
+      };
+    }
+
+    aggregatePipelineEntries(final, tree);
+
+    for (const child of tree.children || []) {
+      if (child?.isBaseMaterial) {
+        aggregatePipelineEntries(mining, child);
+      } else {
+        aggregatePipelineEntries(assembly, child);
+      }
+
+      function visitDescendants(node) {
+        for (const descendant of node.children || []) {
+          if (descendant?.isBaseMaterial) {
+            aggregatePipelineEntries(mining, descendant);
+          } else {
+            aggregatePipelineEntries(processing, descendant);
+          }
+          visitDescendants(descendant);
+        }
+      }
+
+      visitDescendants(child);
+    }
+
+    return {
+      mining: finalizePipelineEntries(mining),
+      processing: finalizePipelineEntries(processing),
+      assembly: finalizePipelineEntries(assembly),
+      final: finalizePipelineEntries(final),
+    };
+  }
+
+  function renderDependencyPipelineMarkup(tree) {
+    const groups = buildDependencyPipelineGroups(tree);
+    const steps = [
+      { key: "mining", label: "Step 1: Mining", note: "Base materials and raw extraction." },
+      { key: "processing", label: "Step 2: Processing", note: "Intermediate refinement and conversion." },
+      { key: "assembly", label: "Step 3: Assembly", note: "Direct crafted parts for the target." },
+      { key: "final", label: "Step 4: Final", note: "Final output delivery." },
+    ];
+
+    return `
+      <div class="pipeline-grid">
+        ${steps
+          .map((step) => `
+            <section class="pipeline-step">
+              <div class="pipeline-step-header">
+                <span class="pipeline-step-kicker">${escapeHtml(step.label)}</span>
+                <h3>${escapeHtml(step.label.replace(/^Step \d+:\s*/, ""))}</h3>
+                <p class="pipeline-step-note">${escapeHtml(step.note)}</p>
+              </div>
+              ${groups[step.key].length
+                ? `
+                  <ol class="pipeline-list">
+                    ${groups[step.key]
+                      .map((entry) => `
+                        <li class="pipeline-item">
+                          <span>${renderItemMarkup(entry.name, entry.typeID)}</span>
+                          <span class="pipeline-item-qty">${formatNumber(entry.quantity)}</span>
+                        </li>
+                      `)
+                      .join("")}
+                  </ol>
+                `
+                : `<p class="workspace-empty">No items in this stage.</p>`}
+            </section>
+          `)
+          .join("")}
+      </div>
+    `;
+  }
+
+  function createCalculatorWorkspaceState() {
+    return {
+      activeWorkspaceTab: "plan",
+      openDrawer: null,
+      isUploadModalOpen: false,
+      expandedLists: {
+        materials: false,
+        components: false,
+      },
+    };
+  }
+
+  function reduceCalculatorWorkspaceState(currentState = createCalculatorWorkspaceState(), action = {}) {
+    const state = {
+      ...currentState,
+      expandedLists: {
+        ...currentState.expandedLists,
+      },
+    };
+
+    switch (action.type) {
+      case "set-workspace-tab":
+        if (action.tab === "plan" || action.tab === "pipeline" || action.tab === "tree") {
+          state.activeWorkspaceTab = action.tab;
+        }
+        return state;
+      case "toggle-drawer":
+        state.openDrawer = state.openDrawer === action.drawer ? null : action.drawer || null;
+        return state;
+      case "toggle-upload-modal":
+        state.isUploadModalOpen = typeof action.open === "boolean" ? action.open : !state.isUploadModalOpen;
+        return state;
+      case "toggle-list":
+        if (action.listKey && Object.prototype.hasOwnProperty.call(state.expandedLists, action.listKey)) {
+          state.expandedLists[action.listKey] = !state.expandedLists[action.listKey];
+        }
+        return state;
+      case "close-overlays":
+        state.openDrawer = null;
+        state.isUploadModalOpen = false;
+        return state;
+      default:
+        return state;
+    }
+  }
+
   function serializeRecipeSelections(recipeSelections = {}) {
     return Object.entries(recipeSelections)
       .map(([typeID, recipeID]) => [Number(typeID), Number(recipeID)])
@@ -1582,7 +1907,7 @@
       interactionScope = "outline",
       interactionRootKey = "",
     } = options;
-    const toggleNodeAttribute = `data-${interactionScope}-toggle-node-id`;
+    const rowToggleNodeAttribute = `data-${interactionScope}-row-toggle-node-id`;
     const recipeToggleAttribute = `data-${interactionScope}-recipe-toggle-type-id`;
     const recipeSelectAttribute = `data-${interactionScope}-recipe-type-id`;
     const rootKeyAttribute = interactionRootKey ? `data-${interactionScope}-root-key="${escapeHtml(interactionRootKey)}"` : "";
@@ -1626,6 +1951,14 @@
         "outline-row",
         recipeCount > 1 ? "has-alternates" : "",
       ].filter(Boolean).join(" ");
+      const rowBodyClasses = [
+        "outline-row-body",
+        canExpand ? "is-expandable" : "is-leaf",
+        canExpand && isExpanded ? "is-expanded" : "",
+      ].filter(Boolean).join(" ");
+      const rowActionAttributes = canExpand
+        ? `${rowToggleNodeAttribute}="${node.nodeId}" ${rootKeyAttribute} role="button" tabindex="0" aria-expanded="${String(isExpanded)}" aria-label="${escapeHtml(isExpanded ? `Collapse ${node.item.name}` : `Expand ${node.item.name}`)}"`
+        : `aria-label="${escapeHtml(`${node.item.name} has no child dependencies`)}"`;
       const pillMarkup = [];
 
       if (recipeCount > 1) {
@@ -1705,34 +2038,28 @@
 
       return `
         <div class="${rowClasses}" data-depth="${node.depth}" data-status="${trackedStatus || "none"}" style="--depth:${node.depth}">
-          <button
-            type="button"
-            class="outline-toggle${canExpand ? "" : " is-disabled"}"
-            ${toggleNodeAttribute}="${node.nodeId}"
-            ${rootKeyAttribute}
-            aria-expanded="${canExpand ? String(isExpanded) : "false"}"
-            aria-label="${canExpand ? `${isExpanded ? "Collapse" : "Expand"} ${escapeHtml(node.item.name)}` : `${escapeHtml(node.item.name)} has no child dependencies`}"
-            ${canExpand ? "" : "disabled"}
-          >
-            ${canExpand ? (isExpanded ? "−" : "+") : "·"}
-          </button>
-          <div class="outline-main">
-            <span class="item-icon" data-icon-type-id="${node.item.typeID}" data-icon-fallback="${escapeHtml(getIconFallbackLabel(node.item.name))}">
-              ${escapeHtml(getIconFallbackLabel(node.item.name))}
+          <div class="${rowBodyClasses}" ${rowActionAttributes}>
+            <span class="outline-chevron${canExpand ? "" : " is-leaf"}" aria-hidden="true">
+              ${canExpand ? (isExpanded ? "▾" : "▸") : "•"}
             </span>
-            <div class="outline-main-copy">
-              <span class="outline-name">${escapeHtml(node.item.name)}</span>
-              <div class="outline-inline-meta">
-                <span class="outline-qty">need ${formatNumber(node.requestedQuantity)}</span>
-                <span class="outline-runs">${node.recipe ? `${formatNumber(node.runsNeeded)} run${node.runsNeeded === 1 ? "" : "s"}` : "raw material"}</span>
+            <div class="outline-main">
+              <span class="item-icon" data-icon-type-id="${node.item.typeID}" data-icon-fallback="${escapeHtml(getIconFallbackLabel(node.item.name))}">
+                ${escapeHtml(getIconFallbackLabel(node.item.name))}
+              </span>
+              <div class="outline-main-copy">
+                <span class="outline-name">${escapeHtml(node.item.name)}</span>
+                <div class="outline-inline-meta">
+                  <span class="outline-qty">need ${formatNumber(node.requestedQuantity)}</span>
+                  <span class="outline-runs">${node.recipe ? `${formatNumber(node.runsNeeded)} run${node.runsNeeded === 1 ? "" : "s"}` : "raw material"}</span>
+                </div>
               </div>
             </div>
-          </div>
-          <div class="outline-side">
-            <div class="outline-pill-group">
-              ${pillMarkup.join("")}
+            <div class="outline-side">
+              <div class="outline-pill-group">
+                ${pillMarkup.join("")}
+              </div>
+              ${statusMeterMarkup}
             </div>
-            ${statusMeterMarkup}
           </div>
         </div>
         ${chooserMarkup}
@@ -2488,11 +2815,17 @@
   }
 
   function bindBrowserApp() {
-    const dataSection = document.getElementById("dataSection");
     const graphFileInput = document.getElementById("graphFile");
     const folderInput = document.getElementById("folderInput");
     const iconZipInput = document.getElementById("iconZipFile");
     const statusPill = document.getElementById("statusPill");
+    const workspaceHeaderTarget = document.getElementById("workspaceHeaderTarget");
+    const workspaceHeaderProgress = document.getElementById("workspaceHeaderProgress");
+    const workspaceHeaderEta = document.getElementById("workspaceHeaderEta");
+    const openUploadModalButton = document.getElementById("openUploadModal");
+    const openDatasetDrawerButton = document.getElementById("openDatasetDrawer");
+    const openFiltersDrawerButton = document.getElementById("openFiltersDrawer");
+    const openViewDrawerButton = document.getElementById("openViewDrawer");
     const searchInput = document.getElementById("searchInput");
     const searchResults = document.getElementById("searchResults");
     const catalogTree = document.getElementById("catalogTree");
@@ -2500,25 +2833,32 @@
     const catalogBranchCount = document.getElementById("catalogBranchCount");
     const selectedItemCard = document.getElementById("selectedItemCard");
     const quantityInput = document.getElementById("quantityInput");
-    const summaryEmpty = document.getElementById("summaryEmpty");
-    const summaryContent = document.getElementById("summaryContent");
-    const summaryTitle = document.getElementById("summaryTitle");
-    const summaryMeta = document.getElementById("summaryMeta");
     const summaryRecipeField = document.getElementById("summaryRecipeField");
     const summaryRecipeSelect = document.getElementById("summaryRecipeSelect");
-    const defaultRecipePresetsSection = document.getElementById("defaultRecipePresetsSection");
     const defaultRecipePresetsMeta = document.getElementById("defaultRecipePresetsMeta");
     const defaultRecipePresetsList = document.getElementById("defaultRecipePresetsList");
-    const rawMaterialsPreview = document.getElementById("rawMaterialsPreview");
-    const componentsPreview = document.getElementById("componentsPreview");
-    const rawMaterialsCount = document.getElementById("rawMaterialsCount");
-    const componentsCount = document.getElementById("componentsCount");
-    const dependencyOutlineSection = document.getElementById("dependencyOutlineSection");
+    const nextActionsContent = document.getElementById("nextActionsContent");
+    const bottleneckContent = document.getElementById("bottleneckContent");
+    const materialsList = document.getElementById("materialsList");
+    const materialsMeta = document.getElementById("materialsMeta");
+    const componentsList = document.getElementById("componentsList");
+    const componentsMeta = document.getElementById("componentsMeta");
+    const workspaceTabPlan = document.getElementById("workspaceTabPlan");
+    const workspaceTabPipeline = document.getElementById("workspaceTabPipeline");
+    const workspaceTabTree = document.getElementById("workspaceTabTree");
+    const planWorkspacePanel = document.getElementById("planWorkspacePanel");
+    const pipelineWorkspacePanel = document.getElementById("pipelineWorkspacePanel");
+    const treeWorkspacePanel = document.getElementById("treeWorkspacePanel");
+    const dependencyPipeline = document.getElementById("dependencyPipeline");
+    const dependencyPipelineContent = document.getElementById("dependencyPipelineContent");
     const treePreview = document.getElementById("treePreview");
     const outlineMeta = document.getElementById("outlineMeta");
     const snapshotMetrics = document.getElementById("snapshotMetrics");
     const activeTargetCard = document.getElementById("activeTargetCard");
-    const summaryRail = document.getElementById("summaryRail");
+    const datasetDrawer = document.getElementById("datasetDrawer");
+    const filtersDrawer = document.getElementById("filtersDrawer");
+    const viewDrawer = document.getElementById("viewDrawer");
+    const dataUploadModal = document.getElementById("dataUploadModal");
     const treeDepthSelect = document.getElementById("treeDepthSelect");
     const hideCoveredToggle = document.getElementById("hideCoveredToggle");
     const showRecipeDetailsToggle = document.getElementById("showRecipeDetailsToggle");
@@ -2565,6 +2905,7 @@
       hideCovered: false,
       showRecipeDetails: false,
       showTrackedStatus: true,
+      workspaceUi: createCalculatorWorkspaceState(),
     };
     const plannerRuntime = createPlannerRuntime({
       datasetFingerprint: "default",
@@ -2770,6 +3111,35 @@
       `;
     }
 
+    function renderWorkspaceHeader() {
+      const summary = summarizeWorkspaceHeader({
+        currentSummary: state.currentSummary,
+        currentProgressSections: state.currentProgressSections,
+        currentRollup: state.currentRollup,
+      });
+
+      if (workspaceHeaderTarget) {
+        workspaceHeaderTarget.innerHTML = `
+          <span class="metric-label">Target</span>
+          <strong>${escapeHtml(summary.targetName)}</strong>
+        `;
+      }
+
+      if (workspaceHeaderProgress) {
+        workspaceHeaderProgress.innerHTML = `
+          <span class="metric-label">Progress</span>
+          <strong>${formatNumber(summary.progressPercent)}%</strong>
+        `;
+      }
+
+      if (workspaceHeaderEta) {
+        workspaceHeaderEta.innerHTML = `
+          <span class="metric-label">ETA</span>
+          <strong>${escapeHtml(summary.etaLabel)}</strong>
+        `;
+      }
+    }
+
     function renderActiveTargetCard() {
       if (!activeTargetCard) {
         return;
@@ -2874,12 +3244,11 @@
     }
 
     function renderManagedDefaultRecipePresets() {
-      if (!defaultRecipePresetsList || !defaultRecipePresetsMeta || !defaultRecipePresetsSection) {
+      if (!defaultRecipePresetsList || !defaultRecipePresetsMeta) {
         return;
       }
 
       if (!state.graph) {
-        defaultRecipePresetsSection.open = false;
         defaultRecipePresetsMeta.textContent = "No dataset";
         defaultRecipePresetsList.innerHTML = `
           <p class="result-empty">Load data to configure global recipe defaults.</p>
@@ -2888,7 +3257,6 @@
       }
 
       if (!state.managedDefaultRecipePresets.length) {
-        defaultRecipePresetsSection.open = false;
         defaultRecipePresetsMeta.textContent = "Unavailable";
         defaultRecipePresetsList.innerHTML = `
           <p class="result-empty">This dataset does not expose Reinforced Alloys, Carbon Weave, and Thermal Composites together.</p>
@@ -3032,29 +3400,17 @@
     }
 
     function renderSummary() {
-      if (!summaryEmpty || !summaryContent) {
+      if (!summaryRecipeField || !summaryRecipeSelect) {
         return;
       }
 
       if (!state.currentSummary) {
-        summaryEmpty.hidden = false;
-        summaryContent.hidden = true;
-        summaryEmpty.textContent = "Select a craftable item to render its recipe summary.";
+        summaryRecipeField.hidden = true;
+        summaryRecipeSelect.innerHTML = "";
         return;
       }
 
       const summary = state.currentSummary;
-      summaryEmpty.hidden = true;
-      summaryContent.hidden = false;
-
-      summaryTitle.innerHTML = renderItemMarkup(summary.item.name, summary.item.typeID);
-      summaryMeta.innerHTML = `
-        <span>Requested ${formatNumber(summary.requestedQuantity)}</span>
-        <span>${formatNumber(summary.runsNeeded)} run${summary.runsNeeded === 1 ? "" : "s"}</span>
-        <span>Produced ${formatNumber(summary.producedQuantity)}</span>
-        <span>${formatRuntime(summary.totalRuntime)}</span>
-        ${summary.availableRecipes.length > 1 ? `<span>${formatNumber(summary.availableRecipes.length)} recipes</span>` : ""}
-      `;
 
       if (summary.availableRecipes.length > 1) {
         summaryRecipeField.hidden = false;
@@ -3066,8 +3422,6 @@
         summaryRecipeField.hidden = true;
         summaryRecipeSelect.innerHTML = "";
       }
-
-      hydrateIcons(summaryContent, state.iconArchive);
     }
 
     function renderTree() {
@@ -3128,93 +3482,148 @@
       hydrateIcons(treePreview, state.iconArchive);
     }
 
-    function renderRawMaterialsProgress() {
-      if (!rawMaterialsPreview || !rawMaterialsCount) {
+    function renderPlanWorkspace() {
+      if (!materialsList || !componentsList || !materialsMeta || !componentsMeta || !nextActionsContent || !bottleneckContent) {
         return;
       }
 
-      if (!state.currentRollup || !state.currentProgressSections) {
-        rawMaterialsPreview.innerHTML = `<p>Choose a target to generate the mining list.</p>`;
-        rawMaterialsCount.textContent = "";
+      if (!state.currentProgressSections) {
+        nextActionsContent.innerHTML = `<p class="workspace-empty">Choose a target to surface immediate work.</p>`;
+        bottleneckContent.innerHTML = `<p class="workspace-empty">No bottleneck yet.</p>`;
+        materialsList.innerHTML = `<p class="workspace-empty">Choose a target to generate the mining list.</p>`;
+        componentsList.innerHTML = `<p class="workspace-empty">Choose a target to generate production work.</p>`;
+        materialsMeta.textContent = "";
+        componentsMeta.textContent = "";
         return;
       }
 
-      rawMaterialsCount.textContent = `${formatNumber(state.currentProgressSections.baseMaterials.length)} rows`;
-      rawMaterialsPreview.innerHTML = renderProgressTableMarkup(
-        "Raw Materials to Mine",
+      const nextActions = buildNextActions(state.currentProgressSections);
+      const bottleneck = getBottleneckLine(state.currentProgressSections);
+      nextActionsContent.innerHTML = renderActionCardsMarkup(nextActions);
+      bottleneckContent.innerHTML = renderBottleneckMarkup(bottleneck);
+
+      materialsMeta.textContent = `${formatNumber(state.currentProgressSections.baseMaterials.length)} tracked`;
+      componentsMeta.textContent = `${formatNumber(state.currentProgressSections.directComponents.length)} tracked`;
+      materialsList.innerHTML = renderCompactProgressListMarkup(
+        "Materials",
         state.currentProgressSections.baseMaterials,
-        "mined",
+        {
+          expanded: state.workspaceUi.expandedLists.materials,
+          listKey: "materials",
+          emptyMessage: "No raw materials required",
+          interactive: true,
+          doneLabel: "mined",
+        },
       );
-      hydrateIcons(rawMaterialsPreview, state.iconArchive);
-    }
-
-    function renderComponentsProgress() {
-      if (!componentsPreview || !componentsCount) {
-        return;
-      }
-
-      if (!state.currentRollup || !state.currentProgressSections) {
-        componentsPreview.innerHTML = `<p>Choose a target to generate direct component work.</p>`;
-        componentsCount.textContent = "";
-        return;
-      }
-
-      componentsCount.textContent = `${formatNumber(state.currentProgressSections.directComponents.length)} rows`;
-      componentsPreview.innerHTML = renderProgressTableMarkup(
-        "Components to Produce",
+      componentsList.innerHTML = renderCompactProgressListMarkup(
+        "Components",
         state.currentProgressSections.directComponents,
-        "produced",
+        {
+          expanded: state.workspaceUi.expandedLists.components,
+          listKey: "components",
+          emptyMessage: "No components required",
+          interactive: true,
+          doneLabel: "produced",
+        },
       );
-      hydrateIcons(componentsPreview, state.iconArchive);
+      hydrateIcons(materialsList, state.iconArchive);
+      hydrateIcons(componentsList, state.iconArchive);
     }
 
-    function patchRenderedProgressRow(typeID) {
+    function renderPipelineWorkspace() {
+      if (!dependencyPipelineContent) {
+        return;
+      }
+
+      if (!state.currentTree) {
+        dependencyPipelineContent.innerHTML = `<p class="workspace-empty">Select a target to inspect the production pipeline.</p>`;
+      } else {
+        dependencyPipelineContent.innerHTML = renderDependencyPipelineMarkup(state.currentTree);
+        hydrateIcons(dependencyPipelineContent, state.iconArchive);
+      }
+    }
+
+    function patchRenderedProgressListRow(container, typeID) {
       const trackedLine = state.currentProgressLookup.get(Number(typeID));
-      if (!trackedLine) {
+      if (!container || !trackedLine) {
         return;
       }
 
-      function patchIn(container) {
-        const input = container?.querySelector(`[data-progress-have-type-id="${Number(typeID)}"]`);
-        const row = input?.closest("tr");
-        if (!row) {
-          return;
-        }
-
-        row.dataset.status = trackedLine.status;
-        const cells = row.querySelectorAll("td");
-        const remainCell = cells?.[3];
-        if (remainCell) {
-          remainCell.textContent = formatNumber(trackedLine.remaining);
-        }
-
-        const fill = row.querySelector(".progress-bar-fill");
-        if (fill) {
-          fill.className = `progress-bar-fill status-${trackedLine.status}`;
-          fill.style.width = `${trackedLine.progressPercent}%`;
-        }
-
-        const doneToggle = row.querySelector(`[data-progress-complete-type-id="${Number(typeID)}"]`);
-        if (doneToggle) {
-          doneToggle.checked = trackedLine.status === "ready";
-        }
+      const row = container.querySelector(`[data-progress-line-type-id="${Number(typeID)}"]`);
+      if (!row) {
+        return;
       }
 
-      patchIn(rawMaterialsPreview);
-      patchIn(componentsPreview);
+      const amount = row.querySelector(".progress-list-amount");
+      if (amount) {
+        amount.textContent = `${formatNumber(trackedLine.remaining)} left`;
+      }
+
+      const stats = row.querySelector(".progress-list-stats");
+      if (stats) {
+        const doneLabel = container === componentsList ? "Produced" : "Mined";
+        stats.innerHTML = `<span>Need ${formatNumber(trackedLine.need)}</span><span>${doneLabel} ${formatNumber(trackedLine.have)}</span>`;
+      }
+
+      const fill = row.querySelector(".progress-track-fill");
+      if (fill) {
+        fill.style.width = `${Math.max(0, Math.min(100, Number(trackedLine.progressPercent) || 0))}%`;
+      }
+
+      const input = row.querySelector(`[data-progress-have-type-id="${Number(typeID)}"]`);
+      if (input && input !== document.activeElement) {
+        input.value = String(Number(trackedLine.have) || 0);
+      }
+
+      const toggle = row.querySelector(`[data-progress-complete-type-id="${Number(typeID)}"]`);
+      if (toggle) {
+        toggle.checked = trackedLine.status === "ready";
+      }
     }
 
-    function renderProgress() {
-      if (!rawMaterialsPreview || !componentsPreview || !rawMaterialsCount || !componentsCount) {
-        return;
+    function renderWorkspaceChrome() {
+      const isPlan = state.workspaceUi.activeWorkspaceTab === "plan";
+      const isPipeline = state.workspaceUi.activeWorkspaceTab === "pipeline";
+      const isTree = state.workspaceUi.activeWorkspaceTab === "tree";
+      if (workspaceTabPlan) {
+        workspaceTabPlan.classList?.toggle("is-active", isPlan);
+        workspaceTabPlan.setAttribute("aria-selected", String(isPlan));
+      }
+      if (workspaceTabPipeline) {
+        workspaceTabPipeline.classList?.toggle("is-active", isPipeline);
+        workspaceTabPipeline.setAttribute("aria-selected", String(isPipeline));
+      }
+      if (workspaceTabTree) {
+        workspaceTabTree.classList?.toggle("is-active", isTree);
+        workspaceTabTree.setAttribute("aria-selected", String(isTree));
+      }
+      if (planWorkspacePanel) {
+        planWorkspacePanel.hidden = !isPlan;
+      }
+      if (pipelineWorkspacePanel) {
+        pipelineWorkspacePanel.hidden = !isPipeline;
+      }
+      if (treeWorkspacePanel) {
+        treeWorkspacePanel.hidden = !isTree;
       }
 
-      renderRawMaterialsProgress();
-      renderComponentsProgress();
+      if (datasetDrawer) {
+        datasetDrawer.hidden = state.workspaceUi.openDrawer !== "dataset";
+      }
+      if (filtersDrawer) {
+        filtersDrawer.hidden = state.workspaceUi.openDrawer !== "filters";
+      }
+      if (viewDrawer) {
+        viewDrawer.hidden = state.workspaceUi.openDrawer !== "view";
+      }
+      if (dataUploadModal) {
+        dataUploadModal.hidden = !state.workspaceUi.isUploadModalOpen;
+      }
     }
 
     function renderAll() {
       plannerRuntime.setRecipeOptionsByType(buildPlannerRecipeOptionsByTypeFromGraph(state.graph));
+      renderWorkspaceHeader();
       renderSnapshotMetrics();
       renderActiveTargetCard();
       renderCatalogTree();
@@ -3223,7 +3632,9 @@
       renderSearchResults();
       renderSummary();
       renderTree();
-      renderProgress();
+      renderPlanWorkspace();
+      renderPipelineWorkspace();
+      renderWorkspaceChrome();
       renderPlannerShell();
     }
 
@@ -3245,6 +3656,9 @@
       state.currentProgressLookup = new Map();
       state.progressByTypeID = {};
       state.currentPlanKey = null;
+      state.workspaceUi = reduceCalculatorWorkspaceState(state.workspaceUi, {
+        type: "close-overlays",
+      });
 
       if (searchInput) {
         searchInput.disabled = false;
@@ -3254,10 +3668,6 @@
       if (quantityInput) {
         quantityInput.disabled = false;
         quantityInput.value = "1";
-      }
-      if (dataSection) {
-        // Keep the section user-visible while data is available; don't auto-collapse on graph load.
-        dataSection.open = true;
       }
 
       updateSearchResults();
@@ -3348,6 +3758,10 @@
       state.recipeSelections = mergeManagedDefaultRecipeSelections(state.managedDefaultRecipePresets);
       state.activeRecipeChooserTypeID = null;
       state.requestedQuantity = normalizeQuantity(quantityInput?.value || 1);
+      state.workspaceUi = reduceCalculatorWorkspaceState(state.workspaceUi, {
+        type: "set-workspace-tab",
+        tab: "plan",
+      });
       recomputeCalculation(true);
       renderAll();
     }
@@ -3356,20 +3770,14 @@
       state.requestedQuantity = normalizeQuantity(event.target.value);
       event.target.value = String(state.requestedQuantity);
       recomputeCalculation(false);
-      renderActiveTargetCard();
-      renderSummary();
-      renderTree();
-      renderProgress();
+      renderAll();
     }
 
     function handleRecipeSelection(typeID, recipeID) {
       state.recipeSelections[typeID] = Number(recipeID);
       state.activeRecipeChooserTypeID = null;
       recomputeCalculation(false);
-      renderActiveTargetCard();
-      renderSummary();
-      renderTree();
-      renderProgress();
+      renderAll();
     }
 
     function handleManagedDefaultRecipeSelection(rootKey, typeID, recipeID) {
@@ -3402,9 +3810,9 @@
         return;
       }
 
-      const toggleButton = target?.closest("[data-toggle-node-id]");
-      if (toggleButton) {
-        const nodeId = toggleButton.dataset.toggleNodeId;
+      const rowToggle = target?.closest("[data-outline-row-toggle-node-id]");
+      if (rowToggle) {
+        const nodeId = rowToggle.dataset.outlineRowToggleNodeId;
         if (state.expandedNodeIds.has(nodeId)) {
           state.expandedNodeIds.delete(nodeId);
         } else {
@@ -3456,13 +3864,13 @@
         return;
       }
 
-      const toggleButton = target?.closest("[data-default-preset-toggle-node-id]");
-      if (!toggleButton) {
+      const rowToggle = target?.closest("[data-default-preset-row-toggle-node-id]");
+      if (!rowToggle) {
         return;
       }
 
-      const rootKey = toggleButton.dataset.defaultPresetRootKey || "";
-      const nodeId = toggleButton.dataset.defaultPresetToggleNodeId;
+      const rootKey = rowToggle.dataset.defaultPresetRootKey || "";
+      const nodeId = rowToggle.dataset.defaultPresetRowToggleNodeId;
       if (!state.managedDefaultExpandedNodeIdsByRoot[rootKey]) {
         state.managedDefaultExpandedNodeIdsByRoot[rootKey] = new Set();
       }
@@ -3517,14 +3925,14 @@
         value: input.value,
         refreshProgressState,
         persistCurrentPlanProgress,
-        renderActiveTargetCard,
+        renderActiveTargetCard() {
+          renderActiveTargetCard();
+          renderWorkspaceHeader();
+        },
         renderTree,
       });
-
-      patchRenderedProgressRow(typeID);
-      if (componentsPreview?.contains(input)) {
-        renderRawMaterialsProgress();
-      }
+      patchRenderedProgressListRow(materialsList, typeID);
+      patchRenderedProgressListRow(componentsList, typeID);
     }
 
     function handleProgressCommit(event) {
@@ -3533,8 +3941,7 @@
       if (!input || !state.currentPlanKey) {
         return;
       }
-
-      renderProgress();
+      renderAll();
     }
 
     function handleProgressToggle(event) {
@@ -3549,9 +3956,7 @@
       state.progressByTypeID[typeID] = toggle.checked ? trackedLine?.need || 0 : 0;
       refreshProgressState();
       persistCurrentPlanProgress();
-      renderActiveTargetCard();
-      renderProgress();
-      renderTree();
+      renderAll();
     }
 
     function handleTreeViewChange() {
@@ -3560,6 +3965,64 @@
       state.showRecipeDetails = Boolean(showRecipeDetailsToggle?.checked);
       state.showTrackedStatus = Boolean(showTrackedStatusToggle?.checked);
       renderTree();
+      renderPipelineWorkspace();
+    }
+
+    function handleWorkspaceTabChange(event) {
+      const target = getEventTargetElement(event);
+      const button = target?.closest("[data-workspace-tab]");
+      if (!button) {
+        return;
+      }
+
+      state.workspaceUi = reduceCalculatorWorkspaceState(state.workspaceUi, {
+        type: "set-workspace-tab",
+        tab: button.dataset.workspaceTab,
+      });
+      renderWorkspaceChrome();
+      renderPipelineWorkspace();
+    }
+
+    function toggleDrawer(drawer) {
+      state.workspaceUi = reduceCalculatorWorkspaceState(state.workspaceUi, {
+        type: "toggle-drawer",
+        drawer,
+      });
+      renderWorkspaceChrome();
+    }
+
+    function handleOverlayClose(event) {
+      const target = getEventTargetElement(event);
+      const closeButton = target?.closest("[data-close-overlay]");
+      if (!closeButton) {
+        return;
+      }
+
+      state.workspaceUi = reduceCalculatorWorkspaceState(state.workspaceUi, {
+        type: "close-overlays",
+      });
+      renderWorkspaceChrome();
+    }
+
+    function handleUploadModalToggle() {
+      state.workspaceUi = reduceCalculatorWorkspaceState(state.workspaceUi, {
+        type: "toggle-upload-modal",
+      });
+      renderWorkspaceChrome();
+    }
+
+    function handlePlanListToggle(event) {
+      const target = getEventTargetElement(event);
+      const button = target?.closest("[data-progress-list-toggle]");
+      if (!button) {
+        return;
+      }
+
+      state.workspaceUi = reduceCalculatorWorkspaceState(state.workspaceUi, {
+        type: "toggle-list",
+        listKey: button.dataset.progressListToggle,
+      });
+      renderPlanWorkspace();
     }
 
     function handleModeSwitch(event) {
@@ -3569,6 +4032,10 @@
         return;
       }
       plannerRuntime.setMode(button.dataset.mode);
+      state.workspaceUi = reduceCalculatorWorkspaceState(state.workspaceUi, {
+        type: "close-overlays",
+      });
+      renderWorkspaceChrome();
       renderPlannerShell();
     }
 
@@ -3646,6 +4113,10 @@
     graphFileInput?.addEventListener("change", handleGraphFileSelection);
     folderInput?.addEventListener("change", handleFolderSelection);
     iconZipInput?.addEventListener("change", handleIconZipSelection);
+    openUploadModalButton?.addEventListener("click", handleUploadModalToggle);
+    openDatasetDrawerButton?.addEventListener("click", () => toggleDrawer("dataset"));
+    openFiltersDrawerButton?.addEventListener("click", () => toggleDrawer("filters"));
+    openViewDrawerButton?.addEventListener("click", () => toggleDrawer("view"));
     searchInput?.addEventListener("input", handleSearchInput);
     catalogTree?.addEventListener("click", handleCatalogClick);
     searchResults?.addEventListener("click", handleSearchSelection);
@@ -3653,15 +4124,24 @@
     summaryRecipeSelect?.addEventListener("change", handleSummaryRecipeChange);
     defaultRecipePresetsList?.addEventListener("click", handleManagedDefaultPresetClick);
     defaultRecipePresetsList?.addEventListener("change", handleManagedDefaultRecipeChange);
+    workspaceTabPlan?.addEventListener("click", handleWorkspaceTabChange);
+    workspaceTabPipeline?.addEventListener("click", handleWorkspaceTabChange);
+    workspaceTabTree?.addEventListener("click", handleWorkspaceTabChange);
     treePreview?.addEventListener("click", handleTreeClick);
     treePreview?.addEventListener("change", handleOutlineRecipeChange);
-    summaryRail?.addEventListener("click", handleTreeClick);
-    rawMaterialsPreview?.addEventListener("input", handleProgressInput);
-    rawMaterialsPreview?.addEventListener("change", handleProgressCommit);
-    rawMaterialsPreview?.addEventListener("change", handleProgressToggle);
-    componentsPreview?.addEventListener("input", handleProgressInput);
-    componentsPreview?.addEventListener("change", handleProgressCommit);
-    componentsPreview?.addEventListener("change", handleProgressToggle);
+    viewDrawer?.addEventListener("click", handleTreeClick);
+    datasetDrawer?.addEventListener("click", handleOverlayClose);
+    filtersDrawer?.addEventListener("click", handleOverlayClose);
+    viewDrawer?.addEventListener("click", handleOverlayClose);
+    dataUploadModal?.addEventListener("click", handleOverlayClose);
+    materialsList?.addEventListener("click", handlePlanListToggle);
+    materialsList?.addEventListener("input", handleProgressInput);
+    materialsList?.addEventListener("change", handleProgressCommit);
+    materialsList?.addEventListener("change", handleProgressToggle);
+    componentsList?.addEventListener("click", handlePlanListToggle);
+    componentsList?.addEventListener("input", handleProgressInput);
+    componentsList?.addEventListener("change", handleProgressCommit);
+    componentsList?.addEventListener("change", handleProgressToggle);
     treeDepthSelect?.addEventListener("change", handleTreeViewChange);
     hideCoveredToggle?.addEventListener("change", handleTreeViewChange);
     showRecipeDetailsToggle?.addEventListener("change", handleTreeViewChange);
@@ -3686,20 +4166,27 @@
 
   const api = {
     buildCatalogTree,
+    buildDependencyPipelineGroups,
+    buildNextActions,
     buildGraphFromStrippedData,
     buildDependencyTree,
     buildManagedDefaultRecipePresets,
     buildPlanStorageKey,
     buildProgressSections,
     buildRecipeOptionLabel,
+    createCalculatorWorkspaceState,
     createGraphFromFolderFiles,
     createRecipeSummary,
     filterCatalogItems,
+    getBottleneckLine,
     getAvailableRecipesForType,
     getProgressStatus,
     loadStoredPlanProgress,
     mergeManagedDefaultRecipeSelections,
+    reduceCalculatorWorkspaceState,
+    renderCompactProgressListMarkup,
     renderDependencyOutlineMarkup,
+    renderDependencyPipelineMarkup,
     renderProgressTableMarkup,
     renderSelectedTargetMarkup,
     renderPlannerDecisionPanelMarkup,
@@ -3709,6 +4196,7 @@
     searchCraftableItems,
     searchPlannerCatalog,
     shouldDataSectionBeOpen,
+    summarizeWorkspaceHeader,
     buildPlannerLineViewModels,
     focusPlannerDecisionFromOutput,
     renderPlannerAggregatedOutputMarkup,
