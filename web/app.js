@@ -701,6 +701,9 @@
         .map((option) => ({
           blueprintId: Number(option.blueprintId),
           label: option.label || null,
+          outputQuantity: Number(option.outputQuantity ?? option.output ?? 0) || null,
+          runtime: Number(option.runtime ?? option.runTime ?? 0) || null,
+          keyInputHint: option.keyInputHint || option.inputHint || null,
         }))
         .sort((left, right) => left.blueprintId - right.blueprintId);
     }
@@ -713,23 +716,59 @@
       .map((recipeId) => ({ blueprintId: recipeId, label: null }));
   }
 
+  function buildPlannerItemDescriptor(typeId, graph = null) {
+    const item = getItem(graph, typeId);
+    const name = item?.name ?? `Type ${typeId}`;
+
+    return {
+      typeId: Number(typeId),
+      item,
+      name,
+      itemMarkup: renderItemMarkup(name, typeId),
+      typeMeta: `Type ${typeId}`,
+    };
+  }
+
+  function buildPlannerRecipeSummary(typeId, option = {}, graph = null) {
+    if (option?.label) {
+      return option.label;
+    }
+
+    const blueprintId = Number(option?.blueprintId);
+    const recipe = Number.isFinite(blueprintId) ? getRecipe(graph, blueprintId) : null;
+    if (recipe) {
+      return buildRecipeOptionLabel(graph, recipe, typeId);
+    }
+
+    const outputQuantity = Math.max(1, Number(option?.outputQuantity) || 1);
+    const runtime = Number(option?.runtime ?? option?.runTime) || 0;
+    const keyInputHint = option?.keyInputHint || option?.inputHint || null;
+    const summaryBits = [`out ${formatNumber(outputQuantity)}`, formatRuntime(runtime)];
+    if (keyInputHint) {
+      summaryBits.push(keyInputHint);
+    }
+    return summaryBits.join(" · ");
+  }
+
   function buildPlannerLineViewModels({ planLines = [], recipeChoiceByType = {}, recipeOptionsByType = {}, graph = null }) {
     return (Array.isArray(planLines) ? planLines : []).map((line) => {
       const outputTypeId = Number(line.outputTypeId);
       const quantity = normalizePlannerLineQuantity(line.quantity);
+      const itemDescriptor = buildPlannerItemDescriptor(outputTypeId, graph);
       const options = getPlannerRecipeOptionsForType(outputTypeId, recipeOptionsByType, graph);
       const selectedBlueprintId = Number(
         recipeChoiceByType?.[outputTypeId] ?? recipeChoiceByType?.[String(outputTypeId)] ?? options[0]?.blueprintId,
       );
       const selectedOption = options.find((option) => option.blueprintId === selectedBlueprintId) || options[0] || null;
-      const selectedRecipeSummary = selectedOption
-        ? selectedOption.label || `Blueprint ${selectedOption.blueprintId}`
-        : null;
+      const selectedRecipeSummary = selectedOption ? buildPlannerRecipeSummary(outputTypeId, selectedOption, graph) : null;
 
       return {
         lineId: line.lineId,
         outputTypeId,
         quantity,
+        itemName: itemDescriptor.name,
+        itemMarkup: itemDescriptor.itemMarkup,
+        typeMeta: itemDescriptor.typeMeta,
         selectedRecipeSummary,
         hasMultiRecipe: options.length > 1,
       };
@@ -753,7 +792,8 @@
         (line) => `
           <div class="planner-line-row" data-line-id="${line.lineId}">
             <div class="planner-line-main">
-              <div class="planner-line-type">Type ${line.outputTypeId}</div>
+              <div class="planner-line-type">${line.itemMarkup}</div>
+              <div class="planner-line-meta">${escapeHtml(line.typeMeta)}</div>
               ${
                 line.selectedRecipeSummary
                   ? `<div class="planner-line-recipe">${escapeHtml(line.selectedRecipeSummary)}</div>`
@@ -832,17 +872,19 @@
     emptyMessage,
     decisionTypeIds = new Set(),
     activeDecisionTypeId = null,
+    graph = null,
   }) {
     const sortedRows = toSortedPlannerRows(rows);
     const bodyMarkup = sortedRows.length
       ? `
         <div class="planner-output-table">
           <div class="planner-output-row planner-output-row-head">
-            <span>Type</span>
+            <span>Item</span>
             <span>Quantity</span>
           </div>
           ${sortedRows
             .map((row) => {
+              const itemDescriptor = buildPlannerItemDescriptor(row.typeId, graph);
               const isDecisionLinked = decisionTypeIds.has(row.typeId);
               const isActive = Number(activeDecisionTypeId) === row.typeId;
               const className = [
@@ -853,12 +895,17 @@
                 .filter(Boolean)
                 .join(" ");
               const activationAttributes = isDecisionLinked
-                ? `data-planner-focus-decision-type-id="${row.typeId}" tabindex="0" role="button" aria-controls="planner-decision-${row.typeId}" aria-label="Focus decision for type ${row.typeId}"`
+                ? `data-planner-focus-decision-type-id="${row.typeId}" tabindex="0" role="button" aria-controls="planner-decision-${row.typeId}" aria-label="Focus decision for ${escapeHtml(
+                    itemDescriptor.name,
+                  )}"`
                 : "";
 
               return `
                 <div class="${className}" data-planner-row-type-id="${row.typeId}" ${activationAttributes}>
-                  <span>${row.typeId}</span>
+                  <span class="planner-output-item">
+                    ${itemDescriptor.itemMarkup}
+                    <small>${escapeHtml(itemDescriptor.typeMeta)}</small>
+                  </span>
                   <span>${row.quantity}</span>
                 </div>
               `;
@@ -883,6 +930,7 @@
     const noPlanMessage = "No plan lines yet.";
     const decisionTypeIds = getPlannerDecisionTypeIdSet(plannerResult);
     const activeDecisionTypeId = Number(model.plannerState?.uiState?.activeDecisionTypeId);
+    const graph = model.graph || null;
 
     return {
       rawMaterialsMarkup: renderPlannerOutputSectionMarkup({
@@ -891,6 +939,7 @@
         emptyMessage: hasPlanLines ? "No raw materials required" : noPlanMessage,
         decisionTypeIds,
         activeDecisionTypeId,
+        graph,
       }),
       componentsMarkup: renderPlannerOutputSectionMarkup({
         title: "Components to Produce",
@@ -898,6 +947,7 @@
         emptyMessage: hasPlanLines ? "No components required" : noPlanMessage,
         decisionTypeIds,
         activeDecisionTypeId,
+        graph,
       }),
     };
   }
@@ -917,6 +967,17 @@
       outputQuantity,
       runtime,
       keyInputHint: option?.keyInputHint || option?.inputHint || graphInputHint || null,
+      label: buildPlannerRecipeSummary(
+        typeId,
+        {
+          ...option,
+          blueprintId,
+          outputQuantity,
+          runtime,
+          keyInputHint: option?.keyInputHint || option?.inputHint || graphInputHint || null,
+        },
+        graph,
+      ),
     };
   }
 
@@ -955,6 +1016,7 @@
     const groupsMarkup = decisions
       .map((decision) => {
         const typeId = Number(decision?.typeId);
+        const itemDescriptor = buildPlannerItemDescriptor(typeId, graph);
         const currentBlueprintId = Number(decision?.currentRecipe?.blueprintId);
         const isActive = typeId === activeDecisionTypeId;
         const stateValue = decision?.decisionState === "overridden" ? "overridden" : "default";
@@ -965,8 +1027,9 @@
             isActive ? " is-active" : ""
           }" tabindex="-1">
             <div class="planner-decision-group-head">
-              <div>
-                <div class="planner-decision-type-label">Type ${typeId}</div>
+              <div class="planner-decision-head-main">
+                <div class="planner-decision-type-label">${itemDescriptor.itemMarkup}</div>
+                <div class="planner-decision-type-meta">${escapeHtml(itemDescriptor.typeMeta)}</div>
                 <div class="planner-decision-count">${options.length} recipe option${options.length === 1 ? "" : "s"}</div>
               </div>
               <span class="planner-decision-state-pill" data-state="${stateValue}">${escapeHtml(stateValue)}</span>
@@ -993,8 +1056,8 @@
                         ${checked ? "checked" : ""}
                       />
                       <span class="planner-decision-option-main">
-                        <span class="planner-decision-option-id">Blueprint ${metadata.blueprintId}</span>
-                        <span class="planner-decision-option-meta">Out ${formatNumber(metadata.outputQuantity)} · ${formatRuntime(
+                        <span class="planner-decision-option-title">${escapeHtml(metadata.label)}</span>
+                        <span class="planner-decision-option-meta">Output ${formatNumber(metadata.outputQuantity)} · ${formatRuntime(
                           metadata.runtime,
                         )}</span>
                         ${
@@ -1189,6 +1252,98 @@
       children,
       depth,
       isBaseMaterial: baseMaterials.has(Number(typeID)) || Boolean(item.isBaseMaterial),
+      cycleDetected: false,
+    };
+  }
+
+  function buildPlannerDependencyNode(
+    graph,
+    typeID,
+    requestedQuantity = 1,
+    resolveRecipeFn = () => null,
+    traversalState = {},
+  ) {
+    if (!graph) {
+      return null;
+    }
+
+    const item = getItem(graph, typeID);
+    if (!item) {
+      return null;
+    }
+
+    const normalizedQuantity = normalizeQuantity(requestedQuantity);
+    const baseMaterials = traversalState.baseMaterials ?? new Set(graph?.baseMaterials ?? []);
+    const ancestry = traversalState.ancestry ?? new Set();
+    const numericTypeID = Number(typeID);
+
+    if (ancestry.has(numericTypeID)) {
+      return {
+        typeID: numericTypeID,
+        quantity: normalizedQuantity,
+        runs: 0,
+        isBaseMaterial: false,
+        recipe: null,
+        runtime: 0,
+        mass: (Number(item.mass) || 0) * normalizedQuantity,
+        volume: (Number(item.volume) || 0) * normalizedQuantity,
+        children: [],
+        cycleDetected: true,
+      };
+    }
+
+    const selectedRecipeMeta = typeof resolveRecipeFn === "function" ? resolveRecipeFn(numericTypeID) : null;
+    const selectedBlueprintId = Number(selectedRecipeMeta?.blueprintId);
+    const recipe = Number.isFinite(selectedBlueprintId)
+      ? getRecipe(graph, selectedBlueprintId)
+      : resolveRecipeChoice(graph, numericTypeID, {});
+    const isBaseMaterial = baseMaterials.has(numericTypeID) || Boolean(item.isBaseMaterial) || !item.isCraftable;
+
+    if (!recipe) {
+      return {
+        typeID: numericTypeID,
+        quantity: normalizedQuantity,
+        runs: 0,
+        isBaseMaterial,
+        recipe: null,
+        runtime: 0,
+        mass: (Number(item.mass) || 0) * normalizedQuantity,
+        volume: (Number(item.volume) || 0) * normalizedQuantity,
+        children: [],
+        cycleDetected: false,
+      };
+    }
+
+    const selectedOutput = getRecipeOutputForType(recipe, numericTypeID);
+    const outputPerRun = Math.max(1, Number(selectedOutput?.quantity) || 1);
+    const runs = Math.ceil(normalizedQuantity / outputPerRun);
+    const nextAncestry = new Set(ancestry);
+    nextAncestry.add(numericTypeID);
+    const children = (recipe.inputs || [])
+      .map((input) =>
+        buildPlannerDependencyNode(
+          graph,
+          input.typeID,
+          (Number(input.quantity) || 0) * runs,
+          resolveRecipeFn,
+          {
+            baseMaterials,
+            ancestry: nextAncestry,
+          },
+        ),
+      )
+      .filter(Boolean);
+
+    return {
+      typeID: numericTypeID,
+      quantity: normalizedQuantity,
+      runs,
+      isBaseMaterial,
+      recipe,
+      runtime: (Number(recipe.runTime) || 0) * runs,
+      mass: (Number(item.mass) || 0) * normalizedQuantity,
+      volume: (Number(item.volume) || 0) * normalizedQuantity,
+      children,
       cycleDetected: false,
     };
   }
@@ -2662,6 +2817,7 @@
     const support = plannerSupport || getPlannerSupport();
     const runtimeState = {
       mode: "calculator",
+      expandDependencies: typeof expandDependencies === "function" ? expandDependencies : () => null,
       recipeOptionsByType: recipeOptionsByType || {},
       plannerState: support.createEmptyPlannerState(datasetFingerprint),
       plannerResult: {
@@ -2687,7 +2843,7 @@
         planLines: runtimeState.plannerState.planLines,
         recipeChoiceByType: runtimeState.plannerState.recipeChoiceByType,
         recipeOptionsByType: runtimeState.recipeOptionsByType,
-        expandDependencies,
+        expandDependencies: runtimeState.expandDependencies,
       });
     }
 
@@ -2790,6 +2946,11 @@
       recompute();
     }
 
+    function setExpandDependencies(nextExpandDependencies = () => null) {
+      runtimeState.expandDependencies = typeof nextExpandDependencies === "function" ? nextExpandDependencies : () => null;
+      recompute();
+    }
+
     function getRenderModel() {
       return {
         mode: runtimeState.mode,
@@ -2808,6 +2969,7 @@
       recompute,
       removeLine,
       selectRecipe,
+      setExpandDependencies,
       setMode,
       setRecipeOptionsByType,
       updateLineQuantity,
@@ -2910,7 +3072,8 @@
     const plannerRuntime = createPlannerRuntime({
       datasetFingerprint: "default",
       recipeOptionsByType: {},
-      expandDependencies: () => null,
+      expandDependencies: (typeId, quantity, resolveRecipeFn) =>
+        buildPlannerDependencyNode(state.graph, typeId, quantity, resolveRecipeFn),
     });
 
     function renderPlannerShell() {
@@ -2937,7 +3100,10 @@
               .map(
                 (item) => `
                   <li class="planner-catalog-result">
-                    <span class="planner-catalog-result-label">${escapeHtml(item.name)} <small>(Type ${item.typeID})</small></span>
+                    <span class="planner-catalog-result-label">
+                      ${renderItemMarkup(item.name, item.typeID)}
+                      <small>Type ${item.typeID}</small>
+                    </span>
                     <button type="button" class="mini-button" data-planner-add-type-id="${item.typeID}">Add</button>
                   </li>
                 `,
@@ -2959,6 +3125,7 @@
 
       const aggregatedOutputMarkup = renderPlannerAggregatedOutputMarkup({
         planLines: model.plannerState.planLines || [],
+        graph: state.graph,
         plannerResult: model.plannerResult || {},
       });
 
@@ -2977,6 +3144,8 @@
           activeDecisionGroup.scrollIntoView({ block: "nearest" });
         }
       }
+
+      hydrateIcons(plannerShell, state.iconArchive);
     }
 
     function getSelectedCatalogBranch() {
@@ -4166,6 +4335,7 @@
 
   const api = {
     buildCatalogTree,
+    buildPlannerDependencyNode,
     buildDependencyPipelineGroups,
     buildNextActions,
     buildGraphFromStrippedData,

@@ -301,24 +301,44 @@
         <div data-testid="planner-left" class="planner-region">
           <div class="section-head">
             <h2>Plan Builder</h2>
-            <button id="plannerAddLine" type="button" class="mini-button">Add line</button>
+            <span class="section-meta">Queue targets</span>
           </div>
-          <label class="search-label" for="plannerCatalogSearch">Catalog search</label>
-          <input
-            id="plannerCatalogSearch"
-            class="text-input"
-            type="search"
-            placeholder="Search craftable item or typeID"
-          />
-          <ol id="plannerCatalogResults" class="result-list planner-catalog-results">
-            <li class="planner-catalog-result-empty">Load data to search craftable items.</li>
-          </ol>
-          <div class="planner-lines-head">Plan lines</div>
-          <div id="plannerLines"></div>
+          <div class="planner-stack">
+            <section id="plannerCatalogPanel" class="planner-subpanel">
+              <div class="planner-subpanel-head">
+                <div>
+                  <p class="planner-panel-kicker">Catalog</p>
+                  <h3>Add Craft Targets</h3>
+                </div>
+              </div>
+              <label class="search-label" for="plannerCatalogSearch">Catalog search</label>
+              <input
+                id="plannerCatalogSearch"
+                class="text-input"
+                type="search"
+                placeholder="Search craftable item or typeID"
+              />
+              <ol id="plannerCatalogResults" class="result-list planner-catalog-results">
+                <li class="planner-catalog-result-empty">Load data to search craftable items.</li>
+              </ol>
+            </section>
+            <section id="plannerQueuePanel" class="planner-subpanel planner-queue-panel">
+              <div class="planner-subpanel-head">
+                <div>
+                  <p class="planner-panel-kicker">Queue</p>
+                  <h3>Plan Lines</h3>
+                </div>
+                <button id="plannerAddLine" type="button" class="mini-button">Add line</button>
+              </div>
+              <div class="planner-lines-head">Items selected for this production run</div>
+              <div id="plannerLines"></div>
+            </section>
+          </div>
         </div>
-        <div data-testid="planner-center" class="planner-region">
+        <div data-testid="planner-center" id="plannerBreakdownPanel" class="planner-region">
           <div class="section-head">
-            <h2>Aggregated Output</h2>
+            <h2>Production Breakdown</h2>
+            <span class="section-meta">What to mine and build</span>
           </div>
           <div>
             <h3>Raw Materials</h3>
@@ -327,9 +347,10 @@
             <div id="plannerComponents"></div>
           </div>
         </div>
-        <div data-testid="planner-right" class="planner-region">
+        <div data-testid="planner-right" id="plannerRoutingPanel" class="planner-region">
           <div class="section-head">
-            <h2>Decisions</h2>
+            <h2>Recipe Decisions</h2>
+            <span class="section-meta">Resolve alternate routes</span>
           </div>
           <div id="plannerDecisions"></div>
         </div>

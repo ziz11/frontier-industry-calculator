@@ -108,8 +108,25 @@ function createRenderModel(overrides = {}) {
   };
 }
 
+const decisionGraph = {
+  items: {
+    600: { typeID: 600, name: "Composite Plate", isCraftable: true },
+    900: { typeID: 900, name: "Shield Matrix", isCraftable: true },
+    910: { typeID: 910, name: "Ore", isCraftable: false },
+    920: { typeID: 920, name: "Gas", isCraftable: false },
+    930: { typeID: 930, name: "Water", isCraftable: false },
+    940: { typeID: 940, name: "Slurry", isCraftable: false },
+  },
+  recipes: {
+    6001: { blueprintID: 6001, runTime: 5, inputs: [{ typeID: 910, quantity: 4 }], outputs: [{ typeID: 600, quantity: 2 }] },
+    6002: { blueprintID: 6002, runTime: 9, inputs: [{ typeID: 920, quantity: 2 }], outputs: [{ typeID: 600, quantity: 3 }] },
+    9001: { blueprintID: 9001, runTime: 4, inputs: [{ typeID: 930, quantity: 1 }], outputs: [{ typeID: 900, quantity: 1 }] },
+    9002: { blueprintID: 9002, runTime: 8, inputs: [{ typeID: 940, quantity: 3 }], outputs: [{ typeID: 900, quantity: 2 }] },
+  },
+};
+
 test("decision summary renders counts", () => {
-  const markup = renderPlannerDecisionPanelMarkup(createRenderModel());
+  const markup = renderPlannerDecisionPanelMarkup(createRenderModel(), decisionGraph);
 
   assert.match(markup, /Total ambiguous items/);
   assert.match(markup, />2</);
@@ -140,6 +157,7 @@ test("only multi-path items render as decision groups", () => {
         },
       },
     }),
+    decisionGraph,
   );
 
   assert.equal(countMatches(markup, /data-planner-decision-type-id="/g), 1);
@@ -148,7 +166,7 @@ test("only multi-path items render as decision groups", () => {
 });
 
 test("each decision group renders the required scope note", () => {
-  const markup = renderPlannerDecisionPanelMarkup(createRenderModel());
+  const markup = renderPlannerDecisionPanelMarkup(createRenderModel(), decisionGraph);
 
   assert.equal(
     countMatches(markup, /This choice applies to all occurrences of this item in the current plan\./g),
@@ -156,13 +174,22 @@ test("each decision group renders the required scope note", () => {
   );
 });
 
-test("each decision option renders blueprintId and metadata", () => {
-  const markup = renderPlannerDecisionPanelMarkup(createRenderModel());
+test("each decision option renders readable metadata", () => {
+  const markup = renderPlannerDecisionPanelMarkup(createRenderModel(), decisionGraph);
 
-  assert.match(markup, /Blueprint 6001/);
-  assert.match(markup, /Out 2/);
+  assert.match(markup, /Output 2/);
   assert.match(markup, /5s/);
   assert.match(markup, /Ore x4/);
+});
+
+test("decision panel renders item names and readable options instead of raw ids", () => {
+  const markup = renderPlannerDecisionPanelMarkup(createRenderModel(), decisionGraph);
+
+  assert.match(markup, /Composite Plate/);
+  assert.match(markup, /Shield Matrix/);
+  assert.match(markup, /data-icon-type-id="600"/);
+  assert.doesNotMatch(markup, /planner-decision-type-label">Type 600/);
+  assert.doesNotMatch(markup, /Blueprint 6001/);
 });
 
 test("selecting a recipe updates recipeChoiceByType", () => {

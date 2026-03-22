@@ -6,6 +6,16 @@ const { createPlannerRuntime, renderPlannerAggregatedOutputMarkup } = require(".
 function render({ planLines = [], rawMaterials = [], components = [] }) {
   return renderPlannerAggregatedOutputMarkup({
     planLines,
+    graph: {
+      items: {
+        1: { typeID: 1, name: "Dense Ore", isCraftable: false },
+        2: { typeID: 2, name: "Frame", isCraftable: true },
+        3: { typeID: 3, name: "Gas Cloud", isCraftable: false },
+        6: { typeID: 6, name: "Shield Relay", isCraftable: true },
+        8: { typeID: 8, name: "Flux Coil", isCraftable: true },
+        9: { typeID: 9, name: "Composite Plate", isCraftable: true },
+      },
+    },
     plannerResult: {
       rawMaterials,
       components,
@@ -111,6 +121,19 @@ test("empty plan shows empty state", () => {
 
   assert.match(markup.rawMaterialsMarkup, /No plan lines yet/);
   assert.match(markup.componentsMarkup, /No plan lines yet/);
+});
+
+test("output rows render names and icon hooks when graph metadata exists", () => {
+  const markup = render({
+    planLines: [{ lineId: "l1", outputTypeId: 10, quantity: 1 }],
+    rawMaterials: [{ typeId: 1, quantity: 2 }],
+    components: [{ typeId: 9, quantity: 3 }],
+  });
+
+  assert.match(markup.rawMaterialsMarkup, /Dense Ore/);
+  assert.match(markup.rawMaterialsMarkup, /data-icon-type-id="1"/);
+  assert.match(markup.componentsMarkup, /Composite Plate/);
+  assert.match(markup.componentsMarkup, /data-icon-type-id="9"/);
 });
 
 test("removing lines updates output", () => {

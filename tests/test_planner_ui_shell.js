@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const { createPlannerRuntime } = require("../web/app.js");
+const { createPlannerRuntime, buildPlannerDependencyNode } = require("../web/app.js");
 
 const indexHtml = fs.readFileSync(path.join(__dirname, "..", "web", "index.html"), "utf8");
 const appJs = fs.readFileSync(path.join(__dirname, "..", "web", "app.js"), "utf8");
@@ -45,6 +45,8 @@ test("switching to planner has planner regions in markup", () => {
   assert.match(indexHtml, /data-testid="planner-left"/);
   assert.match(indexHtml, /data-testid="planner-center"/);
   assert.match(indexHtml, /data-testid="planner-right"/);
+  assert.match(indexHtml, /id="plannerCatalogPanel"/);
+  assert.match(indexHtml, /id="plannerQueuePanel"/);
 });
 
 test("hidden attribute has an explicit CSS override guard", () => {
@@ -123,6 +125,52 @@ test("adding line updates computed center output", () => {
   runtime.addLine({ lineId: "line-a", outputTypeId: 88, quantity: 5 });
 
   assert.deepEqual(runtime.getRenderModel().plannerResult.rawMaterials, [{ typeId: 88, quantity: 5 }]);
+});
+
+test("runtime can swap in graph-backed planner expansion after data load", () => {
+  const runtime = createPlannerRuntime({
+    datasetFingerprint: "fp-graph-planner",
+    recipeOptionsByType: {
+      200: [{ blueprintId: 1000 }, { blueprintId: 1001 }],
+    },
+  });
+
+  const sampleGraph = {
+    items: {
+      100: { typeID: 100, name: "Dense Ore", isCraftable: false, mass: 1, volume: 1 },
+      200: { typeID: 200, name: "Composite Plate", isCraftable: true, mass: 1, volume: 1 },
+    },
+    recipes: {
+      1000: {
+        blueprintID: 1000,
+        runTime: 12,
+        inputs: [{ typeID: 100, quantity: 2 }],
+        outputs: [{ typeID: 200, quantity: 1 }],
+      },
+      1001: {
+        blueprintID: 1001,
+        runTime: 8,
+        inputs: [{ typeID: 100, quantity: 1 }],
+        outputs: [{ typeID: 200, quantity: 1 }],
+      },
+    },
+    recipesByOutput: {
+      200: [1000, 1001],
+    },
+    baseMaterials: [100],
+  };
+
+  runtime.load();
+  runtime.setExpandDependencies((typeId, quantity, resolveRecipeFn) =>
+    buildPlannerDependencyNode(sampleGraph, typeId, quantity, resolveRecipeFn),
+  );
+  runtime.addLine({ lineId: "line-a", outputTypeId: 200, quantity: 2 });
+
+  assert.deepEqual(runtime.getRenderModel().plannerResult.rawMaterials, [{ typeId: 100, quantity: 4 }]);
+
+  runtime.selectRecipe(200, 1001);
+
+  assert.deepEqual(runtime.getRenderModel().plannerResult.rawMaterials, [{ typeId: 100, quantity: 2 }]);
 });
 
 test("browser runtime without require still computes planner output and persists state", () => {

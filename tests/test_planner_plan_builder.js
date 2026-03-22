@@ -34,8 +34,31 @@ function createRuntime() {
 
 const sampleGraph = {
   items: {
+    100: { typeID: 100, name: "Dense Ore", isCraftable: false },
+    101: { typeID: 101, name: "Signal Core", isCraftable: false },
+    102: { typeID: 102, name: "Gas Cell", isCraftable: false },
     200: { typeID: 200, name: "Composite Plate", isCraftable: true },
     300: { typeID: 300, name: "Shield Relay", isCraftable: true },
+  },
+  recipes: {
+    1000: {
+      blueprintID: 1000,
+      runTime: 12,
+      inputs: [{ typeID: 100, quantity: 2 }],
+      outputs: [{ typeID: 200, quantity: 1 }],
+    },
+    1001: {
+      blueprintID: 1001,
+      runTime: 9,
+      inputs: [{ typeID: 101, quantity: 1 }],
+      outputs: [{ typeID: 300, quantity: 1 }],
+    },
+    1002: {
+      blueprintID: 1002,
+      runTime: 6,
+      inputs: [{ typeID: 102, quantity: 1 }],
+      outputs: [{ typeID: 200, quantity: 2 }],
+    },
   },
   recipesByOutput: {
     200: [1000, 1002],
@@ -125,6 +148,20 @@ test("empty state appears with no planner lines", () => {
 
   assert.match(markup, /No plan lines yet/);
   assert.match(markup, /planner-empty-state/);
+});
+
+test("planner line markup renders readable item identity instead of raw ids", () => {
+  const markup = renderPlannerLinesMarkup({
+    planLines: [{ lineId: "line-a", outputTypeId: 200, quantity: 1 }],
+    recipeChoiceByType: {},
+    recipeOptionsByType: {},
+    graph: sampleGraph,
+  });
+
+  assert.match(markup, /Composite Plate/);
+  assert.match(markup, /data-icon-type-id="200"/);
+  assert.match(markup, /planner-line-meta">Type 200/);
+  assert.doesNotMatch(markup, /Blueprint 1000/);
 });
 
 test("recompute output changes after planner edits", () => {
