@@ -231,6 +231,7 @@ h3 {
 
 .workspace-tabs {
   display: inline-flex;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 6px;
   border: 1px solid rgba(132, 145, 128, 0.12);
@@ -1242,6 +1243,75 @@ input[type="file"] {
   align-items: start;
 }
 
+.default-recipe-workspace-shell {
+  display: grid;
+  gap: 14px;
+}
+
+.default-recipe-workspace-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.92fr) minmax(0, 1.6fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.default-recipe-workspace-list {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.managed-default-workspace-card {
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.managed-default-workspace-select {
+  width: 100%;
+  border: 0;
+  padding: 14px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  appearance: none;
+  font: inherit;
+}
+
+.managed-default-workspace-select:focus-visible {
+  outline: 2px solid rgba(210, 153, 69, 0.38);
+  outline-offset: 2px;
+}
+
+.managed-default-workspace-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.managed-default-workspace-copy {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.managed-default-workspace-label .item-inline {
+  max-width: 100%;
+}
+
+.managed-default-workspace-meta {
+  color: var(--muted);
+  font: 700 0.72rem/1.2 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.managed-default-workspace-detail {
+  min-width: 0;
+}
+
 .default-recipe-rail {
   display: grid;
   gap: 10px;
@@ -1573,6 +1643,10 @@ input[type="file"] {
 
 @media (max-width: 980px) {
   .default-recipe-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .default-recipe-workspace-layout {
     grid-template-columns: 1fr;
   }
 }

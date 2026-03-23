@@ -89,29 +89,10 @@
             <button id="workspaceTabPlan" type="button" class="workspace-tab is-active" data-workspace-tab="plan" role="tab" aria-selected="true">Plan</button>
             <button id="workspaceTabPipeline" type="button" class="workspace-tab" data-workspace-tab="pipeline" role="tab" aria-selected="false">Pipeline</button>
             <button id="workspaceTabTree" type="button" class="workspace-tab" data-workspace-tab="tree" role="tab" aria-selected="false">Tree</button>
+            <button id="workspaceTabDefaultRecipes" type="button" class="workspace-tab" data-workspace-tab="default-recipes" role="tab" aria-selected="false">Default Recipe Paths</button>
           </div>
 
           <section id="planWorkspacePanel" class="workspace-tab-panel" role="tabpanel">
-            <section id="nextActionsSection" class="workspace-panel action-panel">
-              <div class="section-head">
-                <h2>Next Actions</h2>
-                <span class="section-meta">Priority queue</span>
-              </div>
-              <div id="nextActionsContent" class="action-list">
-                <p class="workspace-empty">Choose a target to surface immediate work.</p>
-              </div>
-            </section>
-
-            <section id="bottleneckSection" class="workspace-panel">
-              <div class="section-head">
-                <h2>Bottleneck</h2>
-                <span class="section-meta">Current constraint</span>
-              </div>
-              <div id="bottleneckContent">
-                <p class="workspace-empty">No bottleneck yet.</p>
-              </div>
-            </section>
-
             <section id="materialsSection" class="workspace-panel">
               <div class="section-head">
                 <h2>Materials</h2>
@@ -129,6 +110,26 @@
               </div>
               <div id="componentsList">
                 <p class="workspace-empty">Choose a target to generate production work.</p>
+              </div>
+            </section>
+
+            <section id="bottleneckSection" class="workspace-panel">
+              <div class="section-head">
+                <h2>Bottleneck</h2>
+                <span class="section-meta">Current constraint</span>
+              </div>
+              <div id="bottleneckContent">
+                <p class="workspace-empty">No bottleneck yet.</p>
+              </div>
+            </section>
+
+            <section id="nextActionsSection" class="workspace-panel action-panel">
+              <div class="section-head">
+                <h2>Next Actions</h2>
+                <span class="section-meta">Priority queue</span>
+              </div>
+              <div id="nextActionsContent" class="action-list">
+                <p class="workspace-empty">Choose a target to surface immediate work.</p>
               </div>
             </section>
           </section>
@@ -154,6 +155,18 @@
               </div>
               <div id="treePreview" class="outline-area">
                 <p>Select a target to inspect the production chain.</p>
+              </div>
+            </section>
+          </section>
+
+          <section id="defaultRecipeWorkspacePanel" class="workspace-tab-panel" role="tabpanel" hidden>
+            <section class="workspace-panel">
+              <div class="section-head">
+                <h2>Default Recipe Paths</h2>
+                <span class="section-meta">Filtered for active recipe</span>
+              </div>
+              <div id="defaultRecipeWorkspaceContent">
+                <p class="workspace-empty">Load data to configure default recipe paths.</p>
               </div>
             </section>
           </section>
