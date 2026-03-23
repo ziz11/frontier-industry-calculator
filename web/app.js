@@ -51,16 +51,16 @@
   }
 
   const FACILITY_PREFIX_ORDER = ["L", "M", "S", "P"];
-  const MANAGED_DEFAULT_RECIPE_STORAGE_KEY = "frontier-industry-calculator:managed-default-recipes:v1";
+  const MANAGED_DEFAULT_RECIPE_STORAGE_KEY = "frontier-industry-calculator:managed-default-recipes:v2";
   const MANAGED_DEFAULT_RECIPE_ROOTS = [
-    { key: "reinforced-alloys", name: "Reinforced Alloys", preferredPrefixes: ["S"] },
-    { key: "carbon-weave", name: "Carbon Weave", preferredPrefixes: ["S"] },
-    { key: "thermal-composites", name: "Thermal Composites", preferredPrefixes: ["S"] },
-    { key: "silicon-dust", name: "Silicon Dust", preferredPrefixes: ["S"] },
-    { key: "tholin-aggregates", name: "Tholin Aggregates", preferredPrefixes: ["S"] },
-    { key: "feldspar-crystal-shards", name: "Feldspar Crystal Shards", preferredPrefixes: ["S"] },
-    { key: "hydrocarbon-residue", name: "Hydrocarbon Residue", preferredPrefixes: ["S"] },
-    { key: "nickel-iron-veins", name: "Nickel-Iron Veins", preferredPrefixes: ["S"] },
+    { key: "reinforced-alloys", name: "Reinforced Alloys", preferredPrefixes: [] },
+    { key: "carbon-weave", name: "Carbon Weave", preferredPrefixes: [] },
+    { key: "thermal-composites", name: "Thermal Composites", preferredPrefixes: [] },
+    { key: "silicon-dust", name: "Silicon Dust", preferredPrefixes: [] },
+    { key: "tholin-aggregates", name: "Tholin Aggregates", preferredPrefixes: [] },
+    { key: "feldspar-crystal-shards", name: "Feldspar Crystal Shards", preferredPrefixes: [] },
+    { key: "hydrocarbon-residue", name: "Hydrocarbon Residue", preferredPrefixes: [] },
+    { key: "nickel-iron-veins", name: "Nickel-Iron Veins", preferredPrefixes: [] },
   ];
   const KNOWN_FACILITY_PREFIX_BY_TYPE_ID = {
     87119: "S", // Mini Printer
@@ -161,6 +161,33 @@
       : recipe?.facilityPrefixes ?? recipe?.facilities ?? [];
     const prefixes = toOrderedFacilityPrefixes(rawPrefixes);
     return prefixes.length ? `[${prefixes.join("/")}]` : "";
+  }
+
+  function getManagedRouteStateInfo(isCustomized = false) {
+    const customized = Boolean(isCustomized);
+    return {
+      dataState: customized ? "overridden" : "default",
+      shortLabel: customized ? "Custom" : "Preferred",
+      routeLabel: customized ? "Custom route" : "Preferred route",
+    };
+  }
+
+  function getPlannerRouteStateInfo(decisionState = "default") {
+    const changed = decisionState === "overridden";
+    return {
+      dataState: changed ? "overridden" : "default",
+      shortLabel: changed ? "Changed" : "Preferred",
+    };
+  }
+
+  function buildManagedRouteSummary(recipe, typeID) {
+    if (!recipe) {
+      return "Base route";
+    }
+
+    const selectedOutput = getRecipeOutputForType(recipe, typeID);
+    const outputQuantity = Math.max(1, Number(selectedOutput?.quantity) || 1);
+    return `${formatNumber(outputQuantity)}/run · ${formatRuntime(recipe.runTime || 0)}`;
   }
 
   function normalizeManagedDefaultRecipeSelectionMap(graph, selections = {}) {
@@ -427,9 +454,11 @@
     const isActive = Boolean(options.isActive);
     const rootSelectDataAttribute = String(options.rootSelectDataAttribute || "data-managed-default-root-select-key");
     const rootPrefixTag = getRecipeFacilityPrefixTag(graph, preset.rootRecipe) || "[Base]";
-    const currentPathLabel = preset.isCustomized ? "Custom path" : "Default path";
-    const currentStateValue = preset.isCustomized ? "overridden" : "default";
+    const stateInfo = getManagedRouteStateInfo(preset.isCustomized);
     const recipeOptionCount = getAvailableRecipesForType(graph, preset.typeID).length;
+    const scopeLabel = options.scopeLabel || "All calculator targets";
+    const routeSummary = buildManagedRouteSummary(preset.rootRecipe, preset.typeID);
+    const routeFamilyLabel = `${rootPrefixTag} route`;
 
     return `
       <section
@@ -446,18 +475,19 @@
           <div class="planner-decision-group-head managed-default-selection-head">
             <div class="planner-decision-head-main managed-default-selection-main">
               <div class="planner-decision-type-label">${renderItemMarkup(preset.name, preset.typeID)}</div>
-              <div class="planner-decision-type-meta">Type ${formatNumber(preset.typeID)}</div>
-              <div class="planner-decision-count">${formatNumber(recipeOptionCount)} recipe option${recipeOptionCount === 1 ? "" : "s"}</div>
+              <div class="planner-decision-type-meta">${escapeHtml(scopeLabel)}</div>
+              <div class="planner-decision-count">${formatNumber(recipeOptionCount)} route option${recipeOptionCount === 1 ? "" : "s"}</div>
             </div>
             <div class="managed-default-selection-side">
-              <span class="planner-decision-state-pill" data-state="${currentStateValue}">
-                ${escapeHtml(currentStateValue)}
+              <span class="planner-decision-state-pill" data-state="${stateInfo.dataState}">
+                ${escapeHtml(stateInfo.shortLabel)}
               </span>
             </div>
           </div>
           <div class="managed-default-path-row">
-            <span class="managed-default-path-chip is-selected">${escapeHtml(rootPrefixTag)} path</span>
-            <span class="managed-default-path-chip${preset.isCustomized ? " is-custom" : ""}">${escapeHtml(currentPathLabel)}</span>
+            <span class="managed-default-path-chip is-selected">${escapeHtml(routeFamilyLabel)}</span>
+            <span class="managed-default-path-chip">${escapeHtml(routeSummary)}</span>
+            <span class="managed-default-path-chip${preset.isCustomized ? " is-custom" : ""}">${escapeHtml(stateInfo.routeLabel)}</span>
           </div>
         </button>
       </section>
@@ -477,24 +507,24 @@
         <section class="managed-default-detail-panel planner-decision-group managed-default-unified-detail">
           <div class="planner-decision-group-head">
             <div class="planner-decision-head-main">
-              <div class="planner-decision-type-meta">Default recipe paths</div>
+              <div class="planner-decision-type-meta">Preferred routes</div>
               <div class="planner-decision-count">No material selected</div>
             </div>
           </div>
-          <p class="planner-decision-scope-note">${escapeHtml(options.emptyMessage || "Choose a material on the left to edit its default recipe path.")}</p>
+          <p class="planner-decision-scope-note">${escapeHtml(options.emptyMessage || "Choose a material on the left to review or change its preferred route.")}</p>
         </section>
       `;
     }
 
-    const currentStateValue = preset.isCustomized ? "overridden" : "default";
-    const stateLabel = currentStateValue;
+    const stateInfo = getManagedRouteStateInfo(preset.isCustomized);
     const currentBlueprintId = Number(preset?.rootRecipe?.blueprintID);
     const recipeOptions = getAvailableRecipesForType(graph, preset.typeID);
     const interactionId = String(options.interactionId || "managed-default-detail");
     const optionTypeDataAttribute = String(options.optionTypeDataAttribute || "data-managed-default-workspace-option-type-id");
     const optionRootDataAttribute = String(options.optionRootDataAttribute || "data-managed-default-workspace-option-root-key");
-    const scopeNote = options.scopeNote || "Applies to current filtered recipe path.";
-    const stateDetailLabel = options.stateDetailLabel || stateLabel;
+    const scopeNote = options.scopeNote || "Used as the preferred route across calculator targets.";
+    const scopeValue = options.scopeValue || "All calculator targets";
+    const stateDetailLabel = options.stateDetailLabel || stateInfo.shortLabel;
 
     return `
       <section
@@ -504,23 +534,24 @@
         <div class="planner-decision-group-head">
           <div class="planner-decision-head-main">
             <div class="planner-decision-type-label">${renderItemMarkup(preset.name, preset.typeID)}</div>
+            <div class="planner-decision-type-meta">${escapeHtml(scopeValue)}</div>
           </div>
-          <span class="planner-decision-state-pill" data-state="${currentStateValue}">
-            ${escapeHtml(currentStateValue)}
+          <span class="planner-decision-state-pill" data-state="${stateInfo.dataState}">
+            ${escapeHtml(stateInfo.shortLabel)}
           </span>
         </div>
         <div class="planner-decision-facts">
           <div class="planner-decision-fact">
-            <span class="summary-key">Type</span>
-            <strong class="planner-decision-fact-value">Type ${formatNumber(preset.typeID)}</strong>
+            <span class="summary-key">Scope</span>
+            <strong class="planner-decision-fact-value">${escapeHtml(scopeValue)}</strong>
           </div>
           <div class="planner-decision-fact">
-            <span class="summary-key">Recipe options</span>
+            <span class="summary-key">Available routes</span>
             <strong class="planner-decision-fact-value">${formatNumber(recipeOptions.length)}</strong>
           </div>
           <div class="planner-decision-fact planner-decision-meta">
-            <span class="summary-key">STATE</span>
-            <strong class="planner-decision-state" data-state="${currentStateValue}">${escapeHtml(stateDetailLabel)}</strong>
+            <span class="summary-key">Current route</span>
+            <strong class="planner-decision-state" data-state="${stateInfo.dataState}">${escapeHtml(stateDetailLabel)}</strong>
           </div>
         </div>
         <p class="planner-decision-scope-note">${escapeHtml(scopeNote)}</p>
@@ -547,22 +578,23 @@
       interactionId: "managed-default-drawer",
       optionTypeDataAttribute: "data-managed-default-drawer-option-type-id",
       optionRootDataAttribute: "data-managed-default-drawer-option-root-key",
-      scopeNote: options.scopeNote || "Applies as global default for calculator targets.",
-      stateDetailLabel: options.stateDetailLabel || (preset?.isCustomized ? "overridden" : "default"),
-      emptyMessage: options.emptyMessage || "Choose a material on the left to edit its global default recipe path.",
+      scopeNote: options.scopeNote || "Used as the preferred route across calculator targets.",
+      scopeValue: options.scopeValue || "All calculator targets",
+      stateDetailLabel: options.stateDetailLabel || getManagedRouteStateInfo(preset?.isCustomized).shortLabel,
+      emptyMessage: options.emptyMessage || "Choose a material on the left to review or change its preferred route.",
     });
   }
 
   function renderManagedDefaultRecipePathsMarkup(graph, presets = [], state = {}) {
     if (!graph) {
       return `
-        <div class="default-recipe-empty">Load data to configure global recipe defaults.</div>
+        <div class="default-recipe-empty">Load data to review preferred routes.</div>
       `;
     }
 
     if (!Array.isArray(presets) || !presets.length) {
       return `
-        <div class="default-recipe-empty">This dataset does not expose any managed default recipe paths.</div>
+        <div class="default-recipe-empty">This dataset does not include any materials with configurable preferred routes.</div>
       `;
     }
 
@@ -573,19 +605,22 @@
         : presets[0]?.key ?? null;
     const activePreset = presets.find((preset) => preset.key === activeRootKey) ?? presets[0] ?? null;
     const customizedCount = presets.filter((preset) => preset.isCustomized).length;
+    const introMarkup = `
+      <p class="route-board-intro">Set the standard route for materials with multiple production options.</p>
+    `;
 
     const summaryMarkup = `
       <section class="planner-decision-summary default-recipe-summary">
         <div class="planner-decision-summary-card">
-          <span class="summary-key">Managed roots</span>
+          <span class="summary-key">Materials shown</span>
           <strong class="planner-decision-summary-value">${formatNumber(rootCount)}</strong>
         </div>
         <div class="planner-decision-summary-card">
-          <span class="summary-key">Customized</span>
+          <span class="summary-key">Custom routes</span>
           <strong class="planner-decision-summary-value">${formatNumber(customizedCount)}</strong>
         </div>
         <div class="planner-decision-summary-card">
-          <span class="summary-key">Default</span>
+          <span class="summary-key">Using preferred</span>
           <strong class="planner-decision-summary-value">${formatNumber(rootCount - customizedCount)}</strong>
         </div>
       </section>
@@ -598,6 +633,7 @@
             buildManagedDefaultSelectionCardMarkup(preset, graph, {
               isActive: preset.key === activeRootKey,
               rootSelectDataAttribute: "data-managed-default-root-select-key",
+              scopeLabel: "All calculator targets",
             }),
           )
           .join("")}
@@ -608,6 +644,7 @@
 
     return `
       <div class="default-recipe-shell">
+        ${introMarkup}
         ${summaryMarkup}
         <div class="default-recipe-layout">
           ${railMarkup}
@@ -1268,11 +1305,12 @@
       blueprintId,
       outputQuantity,
       runtime,
-      outputLabel: `${formatNumber(outputQuantity)} · ${formatRuntime(runtime)}`,
+      outputLabel: `${formatNumber(outputQuantity)} units`,
+      runtimeLabel: formatRuntime(runtime),
       facilityTag,
       outputDescriptor,
+      title: `${facilityTag ? `${facilityTag} ` : ""}${outputDescriptor}`,
       inputDescriptor,
-      label: `${facilityTag ? `${facilityTag} ` : ""}out ${formatNumber(outputQuantity)} · ${formatRuntime(runtime)} · ${outputDescriptor}`,
     };
   }
 
@@ -1297,14 +1335,18 @@
           ${checked ? "checked" : ""}
         />
         <span class="planner-decision-option-main">
-          <span class="planner-decision-option-title">${escapeHtml(metadata.label)}</span>
+          <span class="planner-decision-option-title">${escapeHtml(metadata.title)}</span>
           <span class="planner-decision-option-details">
             <span class="planner-decision-option-detail">
-              <span class="planner-decision-option-detail-label">OUTPUT</span>
+              <span class="planner-decision-option-detail-label">Output per run</span>
               <span class="planner-decision-option-detail-value">${escapeHtml(metadata.outputLabel)}</span>
             </span>
             <span class="planner-decision-option-detail">
-              <span class="planner-decision-option-detail-label">INPUT</span>
+              <span class="planner-decision-option-detail-label">Cycle time</span>
+              <span class="planner-decision-option-detail-value">${escapeHtml(metadata.runtimeLabel)}</span>
+            </span>
+            <span class="planner-decision-option-detail">
+              <span class="planner-decision-option-detail-label">Key inputs</span>
               <span class="planner-decision-option-detail-value planner-decision-option-hint">${escapeHtml(metadata.inputDescriptor || "No inputs")}</span>
             </span>
           </span>
@@ -1316,6 +1358,7 @@
   function renderPlannerDecisionPanelMarkup(model = {}, graph = null) {
     const plannerResult = model.plannerResult || {};
     const plannerState = model.plannerState || {};
+    const planLines = Array.isArray(model.planLines ?? plannerState.planLines) ? (model.planLines ?? plannerState.planLines) : [];
     const decisionSummary = plannerResult.decisionSummary || {
       totalMultiPathItems: 0,
       defaultCount: 0,
@@ -1323,26 +1366,32 @@
     };
     const decisions = Array.isArray(plannerResult.decisions) ? plannerResult.decisions : [];
     const activeDecisionTypeId = Number(plannerState.uiState?.activeDecisionTypeId);
+    const introMarkup = `
+      <p class="route-board-intro">Review materials with multiple production routes and choose the route this plan should use.</p>
+    `;
 
     const summaryMarkup = `
       <section class="planner-decision-summary">
         <div class="planner-decision-summary-card">
-          <span class="summary-key">Total ambiguous items</span>
+          <span class="summary-key">Materials needing review</span>
           <strong class="planner-decision-summary-value">${formatNumber(decisionSummary.totalMultiPathItems || 0)}</strong>
         </div>
         <div class="planner-decision-summary-card">
-          <span class="summary-key">Overridden</span>
+          <span class="summary-key">Changed in plan</span>
           <strong class="planner-decision-summary-value">${formatNumber(decisionSummary.overriddenCount || 0)}</strong>
         </div>
         <div class="planner-decision-summary-card">
-          <span class="summary-key">Default</span>
+          <span class="summary-key">Using preferred</span>
           <strong class="planner-decision-summary-value">${formatNumber(decisionSummary.defaultCount || 0)}</strong>
         </div>
       </section>
     `;
 
     if (!decisions.length) {
-      return `${summaryMarkup}<div class="planner-empty-state">No decisions</div>`;
+      const emptyMessage = planLines.length
+        ? "All materials in this plan already use their preferred route."
+        : "Add plan lines to review route overrides.";
+      return `${introMarkup}${summaryMarkup}<div class="planner-empty-state">${emptyMessage}</div>`;
     }
 
     const groupsMarkup = decisions
@@ -1351,7 +1400,7 @@
         const itemDescriptor = buildPlannerItemDescriptor(typeId, graph);
         const currentBlueprintId = Number(decision?.currentRecipe?.blueprintId);
         const isActive = typeId === activeDecisionTypeId;
-        const stateValue = decision?.decisionState === "overridden" ? "overridden" : "default";
+        const routeState = getPlannerRouteStateInfo(decision?.decisionState);
         const options = Array.isArray(decision?.options) ? decision.options : [];
 
         return `
@@ -1361,24 +1410,26 @@
             <div class="planner-decision-group-head">
               <div class="planner-decision-head-main">
                 <div class="planner-decision-type-label">${itemDescriptor.itemMarkup}</div>
+                <div class="planner-decision-type-meta">Used across this plan</div>
+                <div class="planner-decision-count">${formatNumber(options.length)} route option${options.length === 1 ? "" : "s"}</div>
               </div>
-              <span class="planner-decision-state-pill" data-state="${stateValue}">${escapeHtml(stateValue)}</span>
+              <span class="planner-decision-state-pill" data-state="${routeState.dataState}">${escapeHtml(routeState.shortLabel)}</span>
             </div>
             <div class="planner-decision-facts">
               <div class="planner-decision-fact">
-                <span class="summary-key">Type</span>
-                <strong class="planner-decision-fact-value">${escapeHtml(itemDescriptor.typeMeta)}</strong>
+                <span class="summary-key">Plan scope</span>
+                <strong class="planner-decision-fact-value">Every occurrence in this plan</strong>
               </div>
               <div class="planner-decision-fact">
-                <span class="summary-key">Recipe options</span>
+                <span class="summary-key">Available routes</span>
                 <strong class="planner-decision-fact-value">${formatNumber(options.length)}</strong>
               </div>
               <div class="planner-decision-fact planner-decision-meta">
-                <span class="summary-key">State</span>
-                <strong class="planner-decision-state" data-state="${stateValue}">${escapeHtml(stateValue)}</strong>
+                <span class="summary-key">Current route</span>
+                <strong class="planner-decision-state" data-state="${routeState.dataState}">${escapeHtml(routeState.shortLabel)}</strong>
               </div>
             </div>
-            <p class="planner-decision-scope-note">This choice applies to all occurrences of this item in the current plan.</p>
+            <p class="planner-decision-scope-note">This route is applied to every occurrence of this material in the current plan.</p>
             <div class="planner-decision-options">
               ${options
                 .map((option) =>
@@ -1400,7 +1451,7 @@
       })
       .join("");
 
-    return `${summaryMarkup}<div class="planner-decision-groups">${groupsMarkup}</div>`;
+    return `${introMarkup}${summaryMarkup}<div class="planner-decision-groups">${groupsMarkup}</div>`;
   }
 
   function buildManagedDefaultWorkspaceDetailMarkup(preset, graph) {
@@ -1408,19 +1459,20 @@
       interactionId: "managed-default-workspace",
       optionTypeDataAttribute: "data-managed-default-workspace-option-type-id",
       optionRootDataAttribute: "data-managed-default-workspace-option-root-key",
-      scopeNote: "Applies to current filtered recipe path.",
-      stateDetailLabel: preset?.isCustomized ? "overridden" : "default",
-      emptyMessage: "Choose a material on the left to edit its default recipe path.",
+      scopeNote: "Used only for materials in the current target route.",
+      scopeValue: "Current target route",
+      stateDetailLabel: getManagedRouteStateInfo(preset?.isCustomized).shortLabel,
+      emptyMessage: "Choose a material on the left to review or change its preferred route.",
     });
   }
 
   function renderManagedDefaultRecipeWorkspaceMarkup(graph, presets = [], state = {}) {
     if (!graph) {
-      return `<div class="default-recipe-empty">Load data to configure default recipe paths.</div>`;
+      return `<div class="default-recipe-empty">Load data to review preferred routes.</div>`;
     }
 
     if (!Number.isFinite(toNumber(state.selectedTypeID))) {
-      return `<div class="default-recipe-empty">Select a target to filter managed defaults for the active recipe.</div>`;
+      return `<div class="default-recipe-empty">Select a target to review the preferred routes used by this production plan.</div>`;
     }
 
     const recipeSelections = state.recipeSelections || {};
@@ -1432,7 +1484,7 @@
     );
 
     if (!visiblePresets.length) {
-      return `<div class="default-recipe-empty">This recipe path does not use any managed default materials.</div>`;
+      return `<div class="default-recipe-empty">This target route does not include any materials with configurable preferred routes.</div>`;
     }
 
     const activeRootKey = visiblePresets.some((preset) => preset.key === state.activeRootKey)
@@ -1440,20 +1492,24 @@
       : visiblePresets[0]?.key ?? null;
     const activePreset = visiblePresets.find((preset) => preset.key === activeRootKey) ?? visiblePresets[0] ?? null;
     const customizedCount = visiblePresets.filter((preset) => preset.isCustomized).length;
+    const introMarkup = `
+      <p class="route-board-intro">Only materials used in the current target route are shown here.</p>
+    `;
 
     return `
       <div class="default-recipe-shell default-recipe-workspace-shell">
+        ${introMarkup}
         <section class="planner-decision-summary default-recipe-summary">
           <div class="planner-decision-summary-card">
-            <span class="summary-key">Visible managed</span>
+            <span class="summary-key">Materials shown</span>
             <strong class="planner-decision-summary-value">${formatNumber(visiblePresets.length)}</strong>
           </div>
           <div class="planner-decision-summary-card">
-            <span class="summary-key">Customized</span>
+            <span class="summary-key">Custom routes</span>
             <strong class="planner-decision-summary-value">${formatNumber(customizedCount)}</strong>
           </div>
           <div class="planner-decision-summary-card">
-            <span class="summary-key">Default</span>
+            <span class="summary-key">Using preferred</span>
             <strong class="planner-decision-summary-value">${formatNumber(visiblePresets.length - customizedCount)}</strong>
           </div>
         </section>
@@ -1464,6 +1520,7 @@
                 buildManagedDefaultSelectionCardMarkup(preset, graph, {
                   isActive: preset.key === activeRootKey,
                   rootSelectDataAttribute: "data-managed-default-workspace-root-select-key",
+                  scopeLabel: "Current target route",
                 }),
               )
               .join("")}

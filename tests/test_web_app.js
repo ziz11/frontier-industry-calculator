@@ -427,7 +427,7 @@ test("getAvailableRecipesForType and resolveRecipeChoice expose and select alter
   assert.equal(resolveRecipeChoice(sampleGraph, 200, { 200: 1002 }).blueprintID, 1002);
 });
 
-test("buildManagedDefaultRecipePresets initializes managed roots with S-preferring recipe trees", () => {
+test("buildManagedDefaultRecipePresets initializes managed roots with graph-default recipe trees", () => {
   const presets = buildManagedDefaultRecipePresets(managedDefaultGraph, {});
 
   assert.deepEqual(presets.map((preset) => preset.name), [
@@ -441,15 +441,15 @@ test("buildManagedDefaultRecipePresets initializes managed roots with S-preferri
     "Nickel-Iron Veins",
   ]);
   assert.equal(presets[0].typeID, 500);
-  assert.equal(presets[0].recipeSelections[500], 5002);
-  assert.equal(presets[1].recipeSelections[510], 5102);
+  assert.equal(presets[0].recipeSelections[500], 5001);
+  assert.equal(presets[1].recipeSelections[510], 5101);
   assert.equal(presets[2].recipeSelections[520], 5202);
-  assert.equal(presets[3].recipeSelections[700], 7002);
-  assert.equal(presets[4].recipeSelections[710], 7102);
-  assert.equal(presets[5].recipeSelections[720], 7202);
-  assert.equal(presets[6].recipeSelections[730], 7302);
-  assert.equal(presets[7].recipeSelections[740], 7402);
-  assert.equal(presets[0].recipeSelections[530], 5302);
+  assert.equal(presets[3].recipeSelections[700], 7001);
+  assert.equal(presets[4].recipeSelections[710], 7101);
+  assert.equal(presets[5].recipeSelections[720], 7201);
+  assert.equal(presets[6].recipeSelections[730], 7301);
+  assert.equal(presets[7].recipeSelections[740], 7401);
+  assert.equal(presets[0].recipeSelections[530], 5301);
 });
 
 test("mergeManagedDefaultRecipeSelections preserves isolated stored overrides per managed root", () => {
@@ -463,11 +463,11 @@ test("mergeManagedDefaultRecipeSelections preserves isolated stored overrides pe
     510: 5101,
     520: 5202,
     530: 5301,
-    700: 7002,
-    710: 7102,
-    720: 7202,
-    730: 7302,
-    740: 7402,
+    700: 7001,
+    710: 7101,
+    720: 7201,
+    730: 7301,
+    740: 7401,
   });
 });
 
@@ -478,7 +478,7 @@ test("buildManagedDefaultPresetCardMarkup exposes the root path summary and cont
     isActive: true,
   });
 
-  assert.match(markup, /\[S\] path/);
+  assert.match(markup, /\[[A-Z/]+\] route/);
   assert.match(markup, /All calculator targets/);
   assert.match(markup, /Preferred/);
   assert.match(markup, /data-managed-default-root-select-key="reinforced-alloys"/);
@@ -518,7 +518,7 @@ test("filterManagedDefaultRecipePresetsForSelection shows only managed direct in
 
   assert.deepEqual(
     visiblePresets.map((preset) => preset.name),
-    ["Reinforced Alloys", "Silicon Dust", "Feldspar Crystal Shards", "Nickel-Iron Veins"],
+    ["Reinforced Alloys", "Silicon Dust", "Tholin Aggregates", "Nickel-Iron Veins"],
   );
 });
 

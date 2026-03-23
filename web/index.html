@@ -32,7 +32,7 @@
             <button id="openUploadModal" type="button" class="mini-button">Load Data</button>
             <button id="openDatasetDrawer" type="button" class="mini-button">Dataset</button>
             <button id="openFiltersDrawer" type="button" class="mini-button">Filters</button>
-            <button id="openDefaultRecipePathsDrawer" type="button" class="mini-button">Default Recipe Paths</button>
+            <button id="openDefaultRecipePathsDrawer" type="button" class="mini-button">Preferred Routes</button>
             <button id="openViewDrawer" type="button" class="mini-button">View</button>
           </div>
           <div class="mode-switch" role="group" aria-label="Mode switch">
@@ -89,7 +89,7 @@
             <button id="workspaceTabPlan" type="button" class="workspace-tab is-active" data-workspace-tab="plan" role="tab" aria-selected="true">Plan</button>
             <button id="workspaceTabPipeline" type="button" class="workspace-tab" data-workspace-tab="pipeline" role="tab" aria-selected="false">Pipeline</button>
             <button id="workspaceTabTree" type="button" class="workspace-tab" data-workspace-tab="tree" role="tab" aria-selected="false">Tree</button>
-            <button id="workspaceTabDefaultRecipes" type="button" class="workspace-tab" data-workspace-tab="default-recipes" role="tab" aria-selected="false">Default Recipe Paths</button>
+            <button id="workspaceTabDefaultRecipes" type="button" class="workspace-tab" data-workspace-tab="default-recipes" role="tab" aria-selected="false">Preferred Routes</button>
           </div>
 
           <section id="planWorkspacePanel" class="workspace-tab-panel" role="tabpanel">
@@ -162,11 +162,11 @@
           <section id="defaultRecipeWorkspacePanel" class="workspace-tab-panel" role="tabpanel" hidden>
             <section class="workspace-panel">
               <div class="section-head">
-                <h2>Default Recipe Paths</h2>
-                <span class="section-meta">Resolve default routes</span>
+                <h2>Preferred Routes</h2>
+                <span class="section-meta">For the current target</span>
               </div>
               <div id="defaultRecipeWorkspaceContent">
-                <p class="workspace-empty">Load data to configure default recipe paths.</p>
+                <p class="workspace-empty">Load data to review preferred routes.</p>
               </div>
             </section>
           </section>
@@ -235,20 +235,20 @@
         <aside class="overlay-panel drawer-panel default-recipe-drawer-panel">
           <div class="overlay-head">
             <div>
-              <p class="eyebrow">Secondary Layer</p>
-              <h2>Default Recipe Paths</h2>
+              <p class="eyebrow">Operations Board</p>
+              <h2>Preferred Routes</h2>
             </div>
             <button type="button" class="mini-button" data-close-overlay="drawer">Close</button>
           </div>
           <div class="overlay-body">
             <section class="drawer-subsection default-recipe-rail-shell">
               <div class="section-head">
-                <h3>Default Recipe Paths</h3>
-                <span class="section-meta">Resolve default routes</span>
+                <h3>Preferred Routes</h3>
+                <span class="section-meta">Set standard routes</span>
               </div>
-              <p class="default-preset-intro">Select a material on the left, then set the active default path on the right.</p>
+              <p class="default-preset-intro">Choose a material, then set the route used by default across calculator targets.</p>
               <div id="defaultRecipePresetsList" class="default-recipe-drawer-content">
-                <p class="result-empty">Load data to configure global recipe defaults.</p>
+                <p class="result-empty">Load data to review preferred routes.</p>
               </div>
             </section>
           </div>
@@ -377,8 +377,8 @@
         </div>
         <div data-testid="planner-right" id="plannerRoutingPanel" class="planner-region">
           <div class="section-head">
-            <h2>Recipe Decisions</h2>
-            <span class="section-meta">Resolve alternate routes</span>
+            <h2>Route Overrides</h2>
+            <span class="section-meta">Adjust plan-wide route choices</span>
           </div>
           <div id="plannerDecisions"></div>
         </div>
