@@ -479,9 +479,11 @@ test("buildManagedDefaultPresetCardMarkup exposes the root path summary and cont
   });
 
   assert.match(markup, /\[S\] path/);
-  assert.match(markup, /Type 500/);
-  assert.match(markup, /default/);
+  assert.match(markup, /All calculator targets/);
+  assert.match(markup, /Preferred/);
   assert.match(markup, /data-managed-default-root-select-key="reinforced-alloys"/);
+  assert.match(markup, /managed-default-selection-select[\s\S]*managed-default-path-row/);
+  assert.match(markup, /<section[\s\S]*data-managed-default-root-select-key="reinforced-alloys"/);
 });
 
 test("renderManagedDefaultRecipePathsMarkup renders a split drawer with planner-style detail cards", () => {
@@ -495,9 +497,14 @@ test("renderManagedDefaultRecipePathsMarkup renders a split drawer with planner-
   assert.match(markup, /data-managed-default-root-detail-key="reinforced-alloys"/);
   assert.match(markup, /default-recipe-detail/);
   assert.match(markup, /planner-decision-option/);
-  assert.match(markup, /<span class="summary-key">STATE<\/span>/);
-  assert.match(markup, />default<\/strong>/);
-  assert.match(markup, /Applies as global default for calculator targets\./);
+  assert.match(markup, /<span class="summary-key">Current route<\/span>/);
+  assert.match(markup, />Preferred<\/strong>/);
+  assert.match(markup, /Used as the preferred route across calculator targets\./);
+  assert.match(markup, /\[S\]/);
+  assert.match(markup, /Reinforced Alloys x1/);
+  assert.match(markup, /<span class="planner-decision-option-detail-label">Key inputs<\/span>/);
+  assert.match(markup, /Binder Matrix x2/);
+  assert.match(markup, /Nickel-Iron Veins x1/);
 });
 
 test("filterManagedDefaultRecipePresetsForSelection shows only managed direct inputs and descendants", () => {
@@ -542,10 +549,10 @@ test("renderManagedDefaultRecipeWorkspaceMarkup renders filtered workspace cards
     activeRootKey: "silicon-dust",
   });
 
-  assert.match(markup, /Visible managed/);
+  assert.match(markup, /Materials shown/);
   assert.match(markup, /default-recipe-layout default-recipe-workspace-layout/);
-  assert.match(markup, /<span class="summary-key">STATE<\/span>/);
-  assert.match(markup, /Applies to current filtered recipe path\./);
+  assert.match(markup, /<span class="summary-key">Current route<\/span>/);
+  assert.match(markup, /Used only for materials in the current target route\./);
   assert.match(markup, /data-managed-default-workspace-root-select-key="silicon-dust"/);
   assert.match(markup, /planner-decision-option/);
   assert.doesNotMatch(markup, /Carbon Weave/);
@@ -562,8 +569,8 @@ test("renderManagedDefaultRecipeWorkspaceMarkup shows empty states for no target
     recipeSelections: mergeManagedDefaultRecipeSelections(presets),
   });
 
-  assert.match(noTargetMarkup, /Select a target to filter managed defaults for the active recipe\./);
-  assert.match(noMatchesMarkup, /This recipe path does not use any managed default materials\./);
+  assert.match(noTargetMarkup, /Select a target to review the preferred routes used by this production plan\./);
+  assert.match(noMatchesMarkup, /This target route does not include any materials with configurable preferred routes\./);
 });
 
 test("createRecipeSummary handles ceil runs and preserves byproducts for multi-output recipes", () => {

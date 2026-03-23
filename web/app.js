@@ -152,14 +152,13 @@
 
   function getRecipeFacilityPrefixTag(graph, recipe) {
     const blueprintId = Number(recipe?.blueprintID);
-    if (!Number.isFinite(blueprintId)) {
-      return "";
-    }
-
-    const rawPrefixes =
-      graph?.recipeFacilityPrefixesByBlueprint?.[blueprintId] ??
-      graph?.recipeFacilityPrefixesByBlueprint?.[String(blueprintId)] ??
-      [];
+    const rawPrefixes = Number.isFinite(blueprintId)
+      ? graph?.recipeFacilityPrefixesByBlueprint?.[blueprintId] ??
+        graph?.recipeFacilityPrefixesByBlueprint?.[String(blueprintId)] ??
+        recipe?.facilityPrefixes ??
+        recipe?.facilities ??
+        []
+      : recipe?.facilityPrefixes ?? recipe?.facilities ?? [];
     const prefixes = toOrderedFacilityPrefixes(rawPrefixes);
     return prefixes.length ? `[${prefixes.join("/")}]` : "";
   }
@@ -436,6 +435,7 @@
       <section
         class="managed-default-selection-card planner-decision-group${isActive ? " is-active" : ""}"
         data-managed-default-root-key="${preset.key}"
+        ${rootSelectDataAttribute}="${preset.key}"
       >
         <button
           type="button"
@@ -455,11 +455,11 @@
               </span>
             </div>
           </div>
+          <div class="managed-default-path-row">
+            <span class="managed-default-path-chip is-selected">${escapeHtml(rootPrefixTag)} path</span>
+            <span class="managed-default-path-chip${preset.isCustomized ? " is-custom" : ""}">${escapeHtml(currentPathLabel)}</span>
+          </div>
         </button>
-        <div class="managed-default-path-row">
-          <span class="managed-default-path-chip is-selected">${escapeHtml(rootPrefixTag)} path</span>
-          <span class="managed-default-path-chip${preset.isCustomized ? " is-custom" : ""}">${escapeHtml(currentPathLabel)}</span>
-        </div>
       </section>
     `;
   }
@@ -504,16 +504,24 @@
         <div class="planner-decision-group-head">
           <div class="planner-decision-head-main">
             <div class="planner-decision-type-label">${renderItemMarkup(preset.name, preset.typeID)}</div>
-            <div class="planner-decision-type-meta">Type ${formatNumber(preset.typeID)}</div>
-            <div class="planner-decision-count">${recipeOptions.length} recipe option${recipeOptions.length === 1 ? "" : "s"}</div>
           </div>
           <span class="planner-decision-state-pill" data-state="${currentStateValue}">
             ${escapeHtml(currentStateValue)}
           </span>
         </div>
-        <div class="planner-decision-meta">
-          <span class="summary-key">STATE</span>
-          <strong class="planner-decision-state" data-state="${currentStateValue}">${escapeHtml(stateDetailLabel)}</strong>
+        <div class="planner-decision-facts">
+          <div class="planner-decision-fact">
+            <span class="summary-key">Type</span>
+            <strong class="planner-decision-fact-value">Type ${formatNumber(preset.typeID)}</strong>
+          </div>
+          <div class="planner-decision-fact">
+            <span class="summary-key">Recipe options</span>
+            <strong class="planner-decision-fact-value">${formatNumber(recipeOptions.length)}</strong>
+          </div>
+          <div class="planner-decision-fact planner-decision-meta">
+            <span class="summary-key">STATE</span>
+            <strong class="planner-decision-state" data-state="${currentStateValue}">${escapeHtml(stateDetailLabel)}</strong>
+          </div>
         </div>
         <p class="planner-decision-scope-note">${escapeHtml(scopeNote)}</p>
         <div class="planner-decision-options">
@@ -1241,31 +1249,30 @@
   }
 
   function buildPlannerDecisionOptionMetadata(option = {}, typeId, graph = null) {
-    const blueprintId = Number(option?.blueprintId);
+    const blueprintId = Number(option?.blueprintId ?? option?.blueprintID);
     const recipe = Number.isFinite(blueprintId) ? getRecipe(graph, blueprintId) : null;
     const selectedOutput = recipe ? getRecipeOutputForType(recipe, typeId) : null;
     const outputQuantity = Math.max(1, Number(option?.outputQuantity ?? selectedOutput?.quantity) || 1);
     const runtime = Number(option?.runtime ?? option?.runTime ?? recipe?.runTime) || 0;
-    const graphInputHint = recipe?.inputs?.[0]
-      ? `${getItem(graph, recipe.inputs[0].typeID)?.name ?? `Type ${recipe.inputs[0].typeID}`} x${formatNumber(recipe.inputs[0].quantity)}`
-      : null;
+    const facilityTag = recipe ? getRecipeFacilityPrefixTag(graph, recipe) : "";
+    const outputTypeId = Number(selectedOutput?.typeID ?? typeId);
+    const outputItemName = getItem(graph, outputTypeId)?.name ?? `Type ${outputTypeId}`;
+    const outputDescriptor = `${outputItemName} x${formatNumber(outputQuantity)}`;
+    const inputDescriptor = Array.isArray(recipe?.inputs) && recipe.inputs.length
+      ? recipe.inputs
+          .map((input) => `${getItem(graph, input.typeID)?.name ?? `Type ${input.typeID}`} x${formatNumber(input.quantity)}`)
+          .join(" + ")
+      : option?.keyInputHint || option?.inputHint || null;
 
     return {
       blueprintId,
       outputQuantity,
       runtime,
-      keyInputHint: option?.keyInputHint || option?.inputHint || graphInputHint || null,
-      label: buildPlannerRecipeSummary(
-        typeId,
-        {
-          ...option,
-          blueprintId,
-          outputQuantity,
-          runtime,
-          keyInputHint: option?.keyInputHint || option?.inputHint || graphInputHint || null,
-        },
-        graph,
-      ),
+      outputLabel: `${formatNumber(outputQuantity)} · ${formatRuntime(runtime)}`,
+      facilityTag,
+      outputDescriptor,
+      inputDescriptor,
+      label: `${facilityTag ? `${facilityTag} ` : ""}out ${formatNumber(outputQuantity)} · ${formatRuntime(runtime)} · ${outputDescriptor}`,
     };
   }
 
@@ -1291,10 +1298,16 @@
         />
         <span class="planner-decision-option-main">
           <span class="planner-decision-option-title">${escapeHtml(metadata.label)}</span>
-          <span class="planner-decision-option-meta">Output ${formatNumber(metadata.outputQuantity)} · ${formatRuntime(
-            metadata.runtime,
-          )}</span>
-          ${metadata.keyInputHint ? `<span class="planner-decision-option-hint">${escapeHtml(metadata.keyInputHint)}</span>` : ""}
+          <span class="planner-decision-option-details">
+            <span class="planner-decision-option-detail">
+              <span class="planner-decision-option-detail-label">OUTPUT</span>
+              <span class="planner-decision-option-detail-value">${escapeHtml(metadata.outputLabel)}</span>
+            </span>
+            <span class="planner-decision-option-detail">
+              <span class="planner-decision-option-detail-label">INPUT</span>
+              <span class="planner-decision-option-detail-value planner-decision-option-hint">${escapeHtml(metadata.inputDescriptor || "No inputs")}</span>
+            </span>
+          </span>
         </span>
       </label>
     `;
@@ -1348,14 +1361,22 @@
             <div class="planner-decision-group-head">
               <div class="planner-decision-head-main">
                 <div class="planner-decision-type-label">${itemDescriptor.itemMarkup}</div>
-                <div class="planner-decision-type-meta">${escapeHtml(itemDescriptor.typeMeta)}</div>
-                <div class="planner-decision-count">${options.length} recipe option${options.length === 1 ? "" : "s"}</div>
               </div>
               <span class="planner-decision-state-pill" data-state="${stateValue}">${escapeHtml(stateValue)}</span>
             </div>
-            <div class="planner-decision-meta">
-              <span class="summary-key">State</span>
-              <strong class="planner-decision-state" data-state="${stateValue}">${escapeHtml(stateValue)}</strong>
+            <div class="planner-decision-facts">
+              <div class="planner-decision-fact">
+                <span class="summary-key">Type</span>
+                <strong class="planner-decision-fact-value">${escapeHtml(itemDescriptor.typeMeta)}</strong>
+              </div>
+              <div class="planner-decision-fact">
+                <span class="summary-key">Recipe options</span>
+                <strong class="planner-decision-fact-value">${formatNumber(options.length)}</strong>
+              </div>
+              <div class="planner-decision-fact planner-decision-meta">
+                <span class="summary-key">State</span>
+                <strong class="planner-decision-state" data-state="${stateValue}">${escapeHtml(stateValue)}</strong>
+              </div>
             </div>
             <p class="planner-decision-scope-note">This choice applies to all occurrences of this item in the current plan.</p>
             <div class="planner-decision-options">

@@ -128,10 +128,10 @@ const decisionGraph = {
 test("decision summary renders counts", () => {
   const markup = renderPlannerDecisionPanelMarkup(createRenderModel(), decisionGraph);
 
-  assert.match(markup, /Total ambiguous items/);
+  assert.match(markup, /Materials needing review/);
   assert.match(markup, />2</);
-  assert.match(markup, /Overridden/);
-  assert.match(markup, /Default/);
+  assert.match(markup, /Changed in plan/);
+  assert.match(markup, /Using preferred/);
 });
 
 test("only multi-path items render as decision groups", () => {
@@ -169,7 +169,7 @@ test("each decision group renders the required scope note", () => {
   const markup = renderPlannerDecisionPanelMarkup(createRenderModel(), decisionGraph);
 
   assert.equal(
-    countMatches(markup, /This choice applies to all occurrences of this item in the current plan\./g),
+    countMatches(markup, /This route is applied to every occurrence of this material in the current plan\./g),
     2,
   );
 });
@@ -177,9 +177,25 @@ test("each decision group renders the required scope note", () => {
 test("each decision option renders readable metadata", () => {
   const markup = renderPlannerDecisionPanelMarkup(createRenderModel(), decisionGraph);
 
-  assert.match(markup, /Output 2/);
-  assert.match(markup, /5s/);
+  assert.match(markup, /Composite Plate x2/);
+  assert.match(markup, /planner-decision-option-detail-label">Output per run/);
+  assert.match(markup, /planner-decision-option-detail-value">2 units/);
+  assert.match(markup, /planner-decision-option-detail-label">Cycle time/);
+  assert.match(markup, /planner-decision-option-detail-value">5s/);
+  assert.match(markup, /Composite Plate x2/);
   assert.match(markup, /Ore x4/);
+});
+
+test("decision detail cards render explicit metadata rows and option detail labels", () => {
+  const markup = renderPlannerDecisionPanelMarkup(createRenderModel(), decisionGraph);
+
+  assert.match(markup, /<span class="summary-key">Plan scope<\/span>/);
+  assert.match(markup, /<span class="summary-key">Available routes<\/span>/);
+  assert.match(markup, /<span class="summary-key">Current route<\/span>/);
+  assert.match(markup, /This route is applied to every occurrence of this material in the current plan\./);
+  assert.match(markup, /<span class="planner-decision-option-detail-label">Output per run<\/span>/);
+  assert.match(markup, /<span class="planner-decision-option-detail-label">Cycle time<\/span>/);
+  assert.match(markup, /<span class="planner-decision-option-detail-label">Key inputs<\/span>/);
 });
 
 test("decision panel renders item names and readable options instead of raw ids", () => {
@@ -219,7 +235,7 @@ test("selecting a non-default recipe marks the group as overridden", () => {
 
   const markup = renderPlannerDecisionPanelMarkup(runtime.getRenderModel());
 
-  assert.match(markup, /State<\/span>\s*<strong[^>]*>overridden<\/strong>/);
+  assert.match(markup, /Current route<\/span>\s*<strong[^>]*>Changed<\/strong>/);
 });
 
 test("selecting the default recipe shows default state", () => {
@@ -230,7 +246,7 @@ test("selecting the default recipe shows default state", () => {
 
   const markup = renderPlannerDecisionPanelMarkup(runtime.getRenderModel());
 
-  assert.match(markup, /State<\/span>\s*<strong[^>]*>default<\/strong>/);
+  assert.match(markup, /Current route<\/span>\s*<strong[^>]*>Preferred<\/strong>/);
 });
 
 test("planner state persists after recipe selection", () => {
