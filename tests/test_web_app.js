@@ -767,6 +767,80 @@ test("renderCompactProgressListMarkup supports inline progress editing controls"
   assert.doesNotMatch(markup, /<table/);
 });
 
+test("renderCompactProgressListMarkup keeps list order stable when a row is marked done", () => {
+  const initialMarkup = renderCompactProgressListMarkup("Materials", [
+    {
+      typeID: 100,
+      name: "Raw Ore A",
+      need: 8,
+      have: 0,
+      remaining: 8,
+      progressPercent: 0,
+      status: "missing",
+    },
+    {
+      typeID: 200,
+      name: "Raw Ore B",
+      need: 10,
+      have: 0,
+      remaining: 10,
+      progressPercent: 0,
+      status: "missing",
+    },
+    {
+      typeID: 300,
+      name: "Raw Ore C",
+      need: 6,
+      have: 0,
+      remaining: 6,
+      progressPercent: 0,
+      status: "missing",
+    },
+  ], {
+    expanded: true,
+    interactive: true,
+    doneLabel: "mined",
+  });
+
+  const completedMarkup = renderCompactProgressListMarkup("Materials", [
+    {
+      typeID: 100,
+      name: "Raw Ore A",
+      need: 8,
+      have: 0,
+      remaining: 8,
+      progressPercent: 0,
+      status: "missing",
+    },
+    {
+      typeID: 200,
+      name: "Raw Ore B",
+      need: 10,
+      have: 10,
+      remaining: 0,
+      progressPercent: 100,
+      status: "ready",
+    },
+    {
+      typeID: 300,
+      name: "Raw Ore C",
+      need: 6,
+      have: 0,
+      remaining: 6,
+      progressPercent: 0,
+      status: "missing",
+    },
+  ], {
+    expanded: true,
+    interactive: true,
+    doneLabel: "mined",
+  });
+
+  const getNameOrder = (markup) => Array.from(markup.matchAll(/Raw Ore [ABC]/g), (match) => match[0]);
+
+  assert.deepEqual(getNameOrder(completedMarkup), getNameOrder(initialMarkup));
+});
+
 test("buildDependencyPipelineGroups maps a dependency tree into mining processing assembly and final stages", () => {
   const tree = buildDependencyTree(sampleGraph, 400, 1, {});
   const pipeline = buildDependencyPipelineGroups(tree);

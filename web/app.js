@@ -1742,14 +1742,29 @@
     return lookup;
   }
 
-  function sortOutstandingLines(lines = []) {
+  function sortOutstandingLines(lines = [], options = {}) {
+    const shouldIncludeCompleted = Boolean(options.includeCompleted);
     return (Array.isArray(lines) ? lines : [])
-      .filter((line) => Number(line?.remaining) > 0)
+      .filter((line) => shouldIncludeCompleted || Number(line?.remaining) > 0)
       .slice()
       .sort((left, right) => {
         const remainingDiff = Number(right?.remaining || 0) - Number(left?.remaining || 0);
         if (remainingDiff !== 0) {
           return remainingDiff;
+        }
+        return String(left?.name || "").localeCompare(String(right?.name || ""));
+      });
+  }
+
+  function sortProgressListLines(lines = [], options = {}) {
+    const shouldIncludeCompleted = options.includeCompleted !== false;
+    return (Array.isArray(lines) ? lines : [])
+      .filter((line) => shouldIncludeCompleted || Number(line?.remaining) > 0)
+      .slice()
+      .sort((left, right) => {
+        const needDiff = Number(right?.need || 0) - Number(left?.need || 0);
+        if (needDiff !== 0) {
+          return needDiff;
         }
         return String(left?.name || "").localeCompare(String(right?.name || ""));
       });
@@ -1840,7 +1855,9 @@
   }
 
   function renderCompactProgressListMarkup(title, lines = [], options = {}) {
-    const sortedLines = sortOutstandingLines(lines);
+    const sortedLines = sortProgressListLines(lines, {
+      includeCompleted: true,
+    });
     const expanded = Boolean(options?.expanded);
     const visibleLines = expanded ? sortedLines : sortedLines.slice(0, 5);
 
