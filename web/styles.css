@@ -1221,6 +1221,153 @@ input[type="file"] {
   gap: 6px;
 }
 
+.default-recipe-drawer-panel {
+  width: min(1120px, calc(100vw - 24px));
+}
+
+.default-recipe-drawer-content,
+.default-recipe-shell {
+  display: grid;
+  gap: 14px;
+}
+
+.default-recipe-summary {
+  margin-bottom: 0;
+}
+
+.default-recipe-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.95fr) minmax(0, 1.7fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.default-recipe-rail {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.default-recipe-detail {
+  min-width: 0;
+}
+
+.default-recipe-empty {
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px dashed rgba(132, 145, 128, 0.2);
+  background: rgba(8, 10, 9, 0.48);
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.managed-default-root-card,
+.managed-default-detail-panel {
+  border: 1px solid rgba(132, 145, 128, 0.14);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(17, 21, 19, 0.98), rgba(10, 12, 11, 0.98)),
+    linear-gradient(90deg, rgba(210, 153, 69, 0.05), transparent 42%);
+  overflow: hidden;
+}
+
+.managed-default-root-card.planner-decision-group {
+  padding: 0;
+  gap: 0;
+}
+
+.managed-default-root-card.is-active,
+.managed-default-detail-panel.is-open {
+  border-color: rgba(210, 153, 69, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(210, 153, 69, 0.12);
+}
+
+.managed-default-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 12px 0;
+}
+
+.managed-default-root-select {
+  flex: 1;
+  display: block;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  appearance: none;
+  font: inherit;
+}
+
+.managed-default-root-select:focus-visible,
+.managed-default-expander:focus-visible {
+  outline: 2px solid rgba(210, 153, 69, 0.38);
+  outline-offset: 2px;
+}
+
+.managed-default-root-select-main {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.managed-default-root-select .item-inline {
+  max-width: 100%;
+}
+
+.managed-default-summary-side {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.managed-default-expander {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 10px;
+  font: 700 14px/1 var(--mono);
+}
+
+.managed-default-path-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid rgba(132, 145, 128, 0.1);
+  background: rgba(8, 10, 9, 0.3);
+}
+
+.managed-default-detail-panel {
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.managed-default-detail-panel .planner-decision-type-label .item-inline {
+  max-width: 100%;
+}
+
+.managed-default-detail-path {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.managed-default-detail-panel .managed-default-tree {
+  padding-top: 4px;
+}
+
+.managed-default-detail-panel .managed-default-tree .outline-row-body {
+  padding-left: calc(10px + (var(--depth, 0) * 12px));
+}
+
 .managed-default-card {
   border: 1px solid rgba(132, 145, 128, 0.14);
   border-radius: 9px;
@@ -1422,6 +1569,12 @@ input[type="file"] {
 
 .managed-default-tree .outline-recipe-note {
   display: none;
+}
+
+@media (max-width: 980px) {
+  .default-recipe-layout {
+    grid-template-columns: 1fr;
+  }
 }
 
 .target-panel-collapsible > .target-panel-head::after {

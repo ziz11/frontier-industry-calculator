@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const {
   buildManagedDefaultRecipePresets,
   buildManagedDefaultPresetCardMarkup,
+  renderManagedDefaultRecipePathsMarkup,
   buildGraphFromStrippedData,
   buildDependencyTree,
   buildCatalogTree,
@@ -344,21 +345,35 @@ test("mergeManagedDefaultRecipeSelections preserves isolated stored overrides pe
   });
 });
 
-test("buildManagedDefaultPresetCardMarkup exposes the root path summary and hides subrecipes until opened", () => {
+test("buildManagedDefaultPresetCardMarkup exposes the root path summary and controls", () => {
   const preset = buildManagedDefaultRecipePresets(managedDefaultGraph, {})[0];
 
-  const closedMarkup = buildManagedDefaultPresetCardMarkup(preset, managedDefaultGraph, {
-    isOpen: false,
-  });
-  const openMarkup = buildManagedDefaultPresetCardMarkup(preset, managedDefaultGraph, {
+  const markup = buildManagedDefaultPresetCardMarkup(preset, managedDefaultGraph, {
+    isActive: true,
     isOpen: true,
   });
 
-  assert.match(closedMarkup, /\[S\] path/);
-  assert.match(closedMarkup, /Custom path/);
-  assert.doesNotMatch(closedMarkup, /outline-list/);
-  assert.match(openMarkup, /outline-list/);
-  assert.match(openMarkup, /data-managed-default-card-key="reinforced-alloys"/);
+  assert.match(markup, /\[S\] path/);
+  assert.match(markup, /Custom path/);
+  assert.match(markup, /data-managed-default-root-select-key="reinforced-alloys"/);
+  assert.match(markup, /data-managed-default-root-toggle-key="reinforced-alloys"/);
+});
+
+test("renderManagedDefaultRecipePathsMarkup renders a split drawer with an active detail tree", () => {
+  const presets = buildManagedDefaultRecipePresets(managedDefaultGraph, {});
+  const markup = renderManagedDefaultRecipePathsMarkup(managedDefaultGraph, presets, {
+    activeRootKey: "reinforced-alloys",
+    openRootKey: "reinforced-alloys",
+    expandedNodeIdsByRoot: {
+      "reinforced-alloys": new Set(),
+    },
+  });
+
+  assert.match(markup, /default-recipe-summary/);
+  assert.match(markup, /default-recipe-layout/);
+  assert.match(markup, /data-managed-default-root-detail-key="reinforced-alloys"/);
+  assert.match(markup, /default-recipe-detail/);
+  assert.match(markup, /outline-list/);
 });
 
 test("createRecipeSummary handles ceil runs and preserves byproducts for multi-output recipes", () => {

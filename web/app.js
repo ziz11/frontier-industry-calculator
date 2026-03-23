@@ -340,6 +340,72 @@
       return "";
     }
 
+    const isActive = Boolean(options.isActive);
+    const isOpen = Boolean(options.isOpen);
+    const rootPrefixTag = getRecipeFacilityPrefixTag(graph, preset.rootRecipe) || "Base";
+    const currentPathLabel = preset.isCustomized ? "Custom path" : "S path";
+    const currentStateValue = preset.isCustomized ? "overridden" : "default";
+
+    return `
+      <section
+        class="managed-default-root-card planner-decision-group${isActive ? " is-active" : ""}${isOpen ? " is-open" : ""}"
+        data-managed-default-root-key="${preset.key}"
+      >
+        <div class="managed-default-card-head planner-decision-group-head">
+          <button
+            type="button"
+            class="managed-default-root-select"
+            data-managed-default-root-select-key="${preset.key}"
+            aria-pressed="${String(isActive)}"
+          >
+            <span class="managed-default-root-select-main">
+              ${renderItemMarkup(preset.name, preset.typeID)}
+              <span class="managed-default-summary-copy">
+                <span class="managed-default-summary-line">${escapeHtml(rootPrefixTag)} path</span>
+                <span class="managed-default-summary-line managed-default-summary-line-muted">
+                  ${escapeHtml(currentPathLabel)}
+                </span>
+              </span>
+            </span>
+          </button>
+          <div class="managed-default-summary-side">
+            <span class="planner-decision-state-pill" data-state="${currentStateValue}">
+              ${escapeHtml(currentPathLabel)}
+            </span>
+            <button
+              type="button"
+              class="mini-button managed-default-expander"
+              data-managed-default-root-toggle-key="${preset.key}"
+              aria-expanded="${String(isOpen)}"
+              aria-label="${escapeHtml(isOpen ? `Collapse ${preset.name}` : `Open ${preset.name}`)}"
+            >
+              ${isOpen ? "−" : "+"}
+            </button>
+          </div>
+        </div>
+        <div class="managed-default-path-row" aria-hidden="true">
+          <span class="managed-default-path-chip is-selected">${escapeHtml(rootPrefixTag)} path</span>
+          <span class="managed-default-path-chip${preset.isCustomized ? " is-custom" : ""}">Custom path</span>
+        </div>
+      </section>
+    `;
+  }
+
+  function buildManagedDefaultPresetDetailMarkup(preset, graph, options = {}) {
+    if (!preset) {
+      return `
+        <section class="managed-default-detail-panel planner-decision-group">
+          <div class="planner-decision-group-head">
+            <div class="planner-decision-head-main">
+              <div class="planner-decision-type-meta">Default recipe paths</div>
+              <div class="planner-decision-count">No preset selected</div>
+            </div>
+          </div>
+          <p class="planner-decision-scope-note">Choose a root on the left to inspect its path tree.</p>
+        </section>
+      `;
+    }
+
     const isOpen = Boolean(options.isOpen);
     const rootPrefixTag = getRecipeFacilityPrefixTag(graph, preset.rootRecipe) || "Base";
     const currentPathLabel = preset.isCustomized ? "Custom path" : "S path";
@@ -360,45 +426,122 @@
       : "";
 
     return `
-      <section class="managed-default-card planner-decision-group${isOpen ? " is-open" : ""}" data-managed-default-card-key="${preset.key}">
-        <div class="managed-default-card-head planner-decision-group-head">
-          <div class="planner-decision-head-main managed-default-summary-main">
-            ${renderItemMarkup(preset.name, preset.typeID)}
-            <div class="managed-default-summary-copy">
-              <span class="managed-default-summary-line">${escapeHtml(rootPrefixTag)} path</span>
-              <span class="managed-default-summary-line managed-default-summary-line-muted">
-                ${escapeHtml(currentPathLabel)}
-              </span>
-            </div>
+      <section
+        class="managed-default-detail-panel planner-decision-group${isOpen ? " is-open" : ""}"
+        data-managed-default-root-detail-key="${preset.key}"
+      >
+        <div class="planner-decision-group-head">
+          <div class="planner-decision-head-main">
+            <div class="planner-decision-type-label">${renderItemMarkup(preset.name, preset.typeID)}</div>
+            <div class="planner-decision-type-meta">Type ${formatNumber(preset.typeID)}</div>
+            <div class="planner-decision-count">${preset.tree?.availableRecipes?.length || 0} recipe path${
+              (preset.tree?.availableRecipes?.length || 0) === 1 ? "" : "s"
+            }</div>
           </div>
-          <div class="managed-default-summary-side">
-            <span class="planner-decision-state-pill" data-state="${currentStateValue}">${escapeHtml(currentPathLabel)}</span>
-            <button
-              type="button"
-              class="mini-button managed-default-expander"
-              data-managed-default-card-key="${preset.key}"
-              aria-expanded="${String(isOpen)}"
-              aria-label="${escapeHtml(isOpen ? `Collapse ${preset.name}` : `Expand ${preset.name}`)}"
-            >
-              ${isOpen ? "−" : "+"}
-            </button>
-          </div>
+          <span class="planner-decision-state-pill" data-state="${currentStateValue}">
+            ${escapeHtml(currentPathLabel)}
+          </span>
         </div>
-        <div class="managed-default-path-row" aria-hidden="true">
+        <div class="planner-decision-meta">
+          <span class="summary-key">State</span>
+          <strong class="planner-decision-state" data-state="${currentStateValue}">${escapeHtml(currentPathLabel)}</strong>
+        </div>
+        <p class="planner-decision-scope-note">
+          ${
+            isOpen
+              ? `Open the tree to adjust alternate routes for ${escapeHtml(preset.name)}.`
+              : `This preset is collapsed. Open it to inspect subrecipes.`
+          }
+        </p>
+        <div class="managed-default-detail-path">
           <span class="managed-default-path-chip is-selected">${escapeHtml(rootPrefixTag)} path</span>
           <span class="managed-default-path-chip${preset.isCustomized ? " is-custom" : ""}">Custom path</span>
         </div>
         ${
           isOpen
             ? `
-              <div class="managed-default-body">
-                <p class="planner-decision-scope-note">Open the tree to adjust alternate routes for this preset.</p>
-                <div class="managed-default-tree">${treeMarkup}</div>
-              </div>
+              <div class="managed-default-tree">${treeMarkup}</div>
             `
             : ""
         }
       </section>
+    `;
+  }
+
+  function renderManagedDefaultRecipePathsMarkup(graph, presets = [], state = {}) {
+    if (!graph) {
+      return `
+        <div class="default-recipe-empty">Load data to configure global recipe defaults.</div>
+      `;
+    }
+
+    if (!Array.isArray(presets) || !presets.length) {
+      return `
+        <div class="default-recipe-empty">This dataset does not expose Reinforced Alloys, Carbon Weave, and Thermal Composites together.</div>
+      `;
+    }
+
+    const rootCount = presets.length;
+    const activeRootKey =
+      presets.some((preset) => preset.key === state.activeRootKey)
+        ? state.activeRootKey
+        : presets[0]?.key ?? null;
+    const hasOpenRootKey = Object.prototype.hasOwnProperty.call(state, "openRootKey");
+    const openRootKey = hasOpenRootKey
+      ? (presets.some((preset) => preset.key === state.openRootKey) ? state.openRootKey : null)
+      : activeRootKey;
+    const activePreset = presets.find((preset) => preset.key === activeRootKey) ?? presets[0] ?? null;
+    const openPreset = presets.find((preset) => preset.key === openRootKey) ?? activePreset;
+    const customizedCount = presets.filter((preset) => preset.isCustomized).length;
+
+    const summaryMarkup = `
+      <section class="planner-decision-summary default-recipe-summary">
+        <div class="planner-decision-summary-card">
+          <span class="summary-key">Managed roots</span>
+          <strong class="planner-decision-summary-value">${formatNumber(rootCount)}</strong>
+        </div>
+        <div class="planner-decision-summary-card">
+          <span class="summary-key">Customized</span>
+          <strong class="planner-decision-summary-value">${formatNumber(customizedCount)}</strong>
+        </div>
+        <div class="planner-decision-summary-card">
+          <span class="summary-key">Default</span>
+          <strong class="planner-decision-summary-value">${formatNumber(rootCount - customizedCount)}</strong>
+        </div>
+      </section>
+    `;
+
+    const railMarkup = `
+      <section class="default-recipe-rail">
+        ${presets
+          .map((preset) =>
+            buildManagedDefaultPresetCardMarkup(preset, graph, {
+              isActive: preset.key === activeRootKey,
+              isOpen: preset.key === openRootKey,
+            }),
+          )
+          .join("")}
+      </section>
+    `;
+
+    const detailMarkup = buildManagedDefaultPresetDetailMarkup(openPreset, graph, {
+      isOpen: Boolean(openPreset && openPreset.key === openRootKey),
+      activeManagedDefaultRecipeChooserRootKey: state.activeManagedDefaultRecipeChooserRootKey,
+      activeManagedDefaultRecipeChooserTypeID: state.activeManagedDefaultRecipeChooserTypeID,
+      expandedNodeIds:
+        (openPreset && state.expandedNodeIdsByRoot?.[openPreset.key]) || getDefaultExpandedNodeIds(openPreset?.tree),
+    });
+
+    return `
+      <div class="default-recipe-shell">
+        ${summaryMarkup}
+        <div class="default-recipe-layout">
+          ${railMarkup}
+          <section class="default-recipe-detail">
+            ${detailMarkup}
+          </section>
+        </div>
+      </div>
     `;
   }
 
@@ -3066,6 +3209,7 @@
     const openUploadModalButton = document.getElementById("openUploadModal");
     const openDatasetDrawerButton = document.getElementById("openDatasetDrawer");
     const openFiltersDrawerButton = document.getElementById("openFiltersDrawer");
+    const openDefaultRecipePathsDrawerButton = document.getElementById("openDefaultRecipePathsDrawer");
     const openViewDrawerButton = document.getElementById("openViewDrawer");
     const searchInput = document.getElementById("searchInput");
     const searchResults = document.getElementById("searchResults");
@@ -3098,6 +3242,7 @@
     const activeTargetCard = document.getElementById("activeTargetCard");
     const datasetDrawer = document.getElementById("datasetDrawer");
     const filtersDrawer = document.getElementById("filtersDrawer");
+    const defaultRecipePathsDrawer = document.getElementById("defaultRecipePathsDrawer");
     const viewDrawer = document.getElementById("viewDrawer");
     const dataUploadModal = document.getElementById("dataUploadModal");
     const treeDepthSelect = document.getElementById("treeDepthSelect");
@@ -3130,6 +3275,7 @@
       managedDefaultStoredSelections: loadStoredManagedDefaultRecipePresets(storage),
       managedDefaultExpandedPresetKeys: new Set(),
       managedDefaultExpandedNodeIdsByRoot: {},
+      managedDefaultActivePresetRootKey: null,
       activeManagedDefaultRecipeChooserTypeID: null,
       activeManagedDefaultRecipeChooserRootKey: null,
       expandedNodeIds: new Set(),
@@ -3288,6 +3434,10 @@
         state.graph,
         state.managedDefaultStoredSelections,
       );
+      const validRootKeys = new Set(state.managedDefaultRecipePresets.map((preset) => preset.key));
+      const nextActivePresetRootKey = validRootKeys.has(state.managedDefaultActivePresetRootKey)
+        ? state.managedDefaultActivePresetRootKey
+        : state.managedDefaultRecipePresets[0]?.key ?? null;
       const nextExpandedNodeIdsByRoot = {};
       for (const preset of state.managedDefaultRecipePresets) {
         const previousExpandedNodeIds = state.managedDefaultExpandedNodeIdsByRoot[preset.key];
@@ -3302,12 +3452,14 @@
         }
       }
       state.managedDefaultExpandedNodeIdsByRoot = nextExpandedNodeIdsByRoot;
-      state.managedDefaultExpandedPresetKeys = new Set(
-        Array.from(state.managedDefaultExpandedPresetKeys).filter((rootKey) =>
-          state.managedDefaultRecipePresets.some((preset) => preset.key === rootKey),
-        ),
-      );
-      if (!state.managedDefaultRecipePresets.some((preset) => preset.key === state.activeManagedDefaultRecipeChooserRootKey)) {
+      state.managedDefaultActivePresetRootKey = nextActivePresetRootKey;
+      const nextOpenPresetKey = Array.from(state.managedDefaultExpandedPresetKeys).find((rootKey) => validRootKeys.has(rootKey));
+      state.managedDefaultExpandedPresetKeys = nextOpenPresetKey
+        ? new Set([nextOpenPresetKey])
+        : nextActivePresetRootKey
+          ? new Set([nextActivePresetRootKey])
+          : new Set();
+      if (!validRootKeys.has(state.activeManagedDefaultRecipeChooserRootKey)) {
         state.activeManagedDefaultRecipeChooserRootKey = null;
         state.activeManagedDefaultRecipeChooserTypeID = null;
       }
@@ -3513,18 +3665,17 @@
       }
 
       defaultRecipePresetsMeta.textContent = `${formatNumber(state.managedDefaultRecipePresets.length)} managed`;
-      defaultRecipePresetsList.innerHTML = state.managedDefaultRecipePresets
-        .map((preset) => {
-          const isOpen = state.managedDefaultExpandedPresetKeys.has(preset.key);
-          return buildManagedDefaultPresetCardMarkup(preset, state.graph, {
-            isOpen,
-            activeManagedDefaultRecipeChooserRootKey: state.activeManagedDefaultRecipeChooserRootKey,
-            activeManagedDefaultRecipeChooserTypeID: state.activeManagedDefaultRecipeChooserTypeID,
-            expandedNodeIds:
-              state.managedDefaultExpandedNodeIdsByRoot[preset.key] || getDefaultExpandedNodeIds(preset.tree),
-          });
-        })
-        .join("");
+      defaultRecipePresetsList.innerHTML = renderManagedDefaultRecipePathsMarkup(
+        state.graph,
+        state.managedDefaultRecipePresets,
+        {
+          activeRootKey: state.managedDefaultActivePresetRootKey,
+          openRootKey: Array.from(state.managedDefaultExpandedPresetKeys)[0] ?? null,
+          activeManagedDefaultRecipeChooserRootKey: state.activeManagedDefaultRecipeChooserRootKey,
+          activeManagedDefaultRecipeChooserTypeID: state.activeManagedDefaultRecipeChooserTypeID,
+          expandedNodeIdsByRoot: state.managedDefaultExpandedNodeIdsByRoot,
+        },
+      );
       hydrateIcons(defaultRecipePresetsList, state.iconArchive);
     }
 
@@ -3822,6 +3973,9 @@
       if (filtersDrawer) {
         filtersDrawer.hidden = state.workspaceUi.openDrawer !== "filters";
       }
+      if (defaultRecipePathsDrawer) {
+        defaultRecipePathsDrawer.hidden = state.workspaceUi.openDrawer !== "default-recipes";
+      }
       if (viewDrawer) {
         viewDrawer.hidden = state.workspaceUi.openDrawer !== "view";
       }
@@ -4048,14 +4202,25 @@
 
     function handleManagedDefaultPresetClick(event) {
       const target = getEventTargetElement(event);
-      const cardToggle = target?.closest("[data-managed-default-card-key]");
-      if (cardToggle) {
-        const rootKey = cardToggle.dataset.managedDefaultCardKey;
-        if (state.managedDefaultExpandedPresetKeys.has(rootKey)) {
-          state.managedDefaultExpandedPresetKeys.delete(rootKey);
-        } else {
-          state.managedDefaultExpandedPresetKeys.add(rootKey);
-        }
+      const rootSelectButton = target?.closest("[data-managed-default-root-select-key]");
+      if (rootSelectButton) {
+        const rootKey = rootSelectButton.dataset.managedDefaultRootSelectKey || "";
+        state.managedDefaultActivePresetRootKey = rootKey;
+        state.managedDefaultExpandedPresetKeys = new Set([rootKey]);
+        state.activeManagedDefaultRecipeChooserRootKey = null;
+        state.activeManagedDefaultRecipeChooserTypeID = null;
+        renderManagedDefaultRecipePresets();
+        return;
+      }
+
+      const rootToggleButton = target?.closest("[data-managed-default-root-toggle-key]");
+      if (rootToggleButton) {
+        const rootKey = rootToggleButton.dataset.managedDefaultRootToggleKey || "";
+        const isSameRoot = state.managedDefaultExpandedPresetKeys.has(rootKey);
+        state.managedDefaultActivePresetRootKey = rootKey;
+        state.managedDefaultExpandedPresetKeys = isSameRoot ? new Set() : new Set([rootKey]);
+        state.activeManagedDefaultRecipeChooserRootKey = null;
+        state.activeManagedDefaultRecipeChooserTypeID = null;
         renderManagedDefaultRecipePresets();
         return;
       }
@@ -4325,6 +4490,7 @@
     openUploadModalButton?.addEventListener("click", handleUploadModalToggle);
     openDatasetDrawerButton?.addEventListener("click", () => toggleDrawer("dataset"));
     openFiltersDrawerButton?.addEventListener("click", () => toggleDrawer("filters"));
+    openDefaultRecipePathsDrawerButton?.addEventListener("click", () => toggleDrawer("default-recipes"));
     openViewDrawerButton?.addEventListener("click", () => toggleDrawer("view"));
     searchInput?.addEventListener("input", handleSearchInput);
     catalogTree?.addEventListener("click", handleCatalogClick);
@@ -4341,6 +4507,7 @@
     viewDrawer?.addEventListener("click", handleTreeClick);
     datasetDrawer?.addEventListener("click", handleOverlayClose);
     filtersDrawer?.addEventListener("click", handleOverlayClose);
+    defaultRecipePathsDrawer?.addEventListener("click", handleOverlayClose);
     viewDrawer?.addEventListener("click", handleOverlayClose);
     dataUploadModal?.addEventListener("click", handleOverlayClose);
     materialsList?.addEventListener("click", handlePlanListToggle);
@@ -4382,6 +4549,7 @@
     buildDependencyTree,
     buildManagedDefaultRecipePresets,
     buildManagedDefaultPresetCardMarkup,
+    buildManagedDefaultPresetDetailMarkup,
     buildPlanStorageKey,
     buildProgressSections,
     buildRecipeOptionLabel,
@@ -4401,6 +4569,7 @@
     renderProgressTableMarkup,
     renderSelectedTargetMarkup,
     renderPlannerDecisionPanelMarkup,
+    renderManagedDefaultRecipePathsMarkup,
     resolveRecipeChoice,
     rollupDependencyTree,
     saveStoredPlanProgress,

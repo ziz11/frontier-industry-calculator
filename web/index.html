@@ -32,6 +32,7 @@
             <button id="openUploadModal" type="button" class="mini-button">Load Data</button>
             <button id="openDatasetDrawer" type="button" class="mini-button">Dataset</button>
             <button id="openFiltersDrawer" type="button" class="mini-button">Filters</button>
+            <button id="openDefaultRecipePathsDrawer" type="button" class="mini-button">Default Recipe Paths</button>
             <button id="openViewDrawer" type="button" class="mini-button">View</button>
           </div>
           <div class="mode-switch" role="group" aria-label="Mode switch">
@@ -212,14 +213,28 @@
                 <p class="result-empty">Load data to browse craftable categories.</p>
               </div>
             </section>
+          </div>
+        </aside>
+      </div>
 
-            <section class="drawer-subsection">
+      <div id="defaultRecipePathsDrawer" class="overlay-shell drawer-shell" hidden>
+        <div class="overlay-backdrop" data-close-overlay="drawer"></div>
+        <aside class="overlay-panel drawer-panel default-recipe-drawer-panel">
+          <div class="overlay-head">
+            <div>
+              <p class="eyebrow">Secondary Layer</p>
+              <h2>Default Recipe Paths</h2>
+            </div>
+            <button type="button" class="mini-button" data-close-overlay="drawer">Close</button>
+          </div>
+          <div class="overlay-body">
+            <section class="drawer-subsection default-recipe-rail-shell">
               <div class="section-head">
-                <h3>Default Recipe Paths</h3>
+                <h3>Global Starter Presets</h3>
                 <span id="defaultRecipePresetsMeta" class="section-meta">No dataset</span>
               </div>
-              <p class="default-preset-intro">Global starter presets for Reinforced Alloys, Carbon Weave, and Thermal Composites.</p>
-              <div id="defaultRecipePresetsList" class="default-preset-list">
+              <p class="default-preset-intro">Select a root path, then inspect its subrecipes in the detail pane.</p>
+              <div id="defaultRecipePresetsList" class="default-recipe-drawer-content">
                 <p class="result-empty">Load data to configure global recipe defaults.</p>
               </div>
             </section>
