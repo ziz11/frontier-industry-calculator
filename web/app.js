@@ -493,7 +493,7 @@
     const interactionId = String(options.interactionId || "managed-default-detail");
     const optionTypeDataAttribute = String(options.optionTypeDataAttribute || "data-managed-default-workspace-option-type-id");
     const optionRootDataAttribute = String(options.optionRootDataAttribute || "data-managed-default-workspace-option-root-key");
-    const scopeNote = options.scopeNote || "Applies to current filtered recipe path.";
+    const scopeNote = options.scopeNote || "This choice applies to all occurrences of this item in the current plan.";
     const stateDetailLabel = options.stateDetailLabel || stateLabel;
 
     return `
@@ -539,7 +539,7 @@
       interactionId: "managed-default-drawer",
       optionTypeDataAttribute: "data-managed-default-drawer-option-type-id",
       optionRootDataAttribute: "data-managed-default-drawer-option-root-key",
-      scopeNote: options.scopeNote || "Applies as global default for calculator targets.",
+      scopeNote: options.scopeNote || "This choice applies to all occurrences of this item in the current plan.",
       stateDetailLabel: options.stateDetailLabel || (preset?.isCustomized ? "overridden" : "default"),
       emptyMessage: options.emptyMessage || "Choose a material on the left to edit its global default recipe path.",
     });
@@ -1241,13 +1241,14 @@
   }
 
   function buildPlannerDecisionOptionMetadata(option = {}, typeId, graph = null) {
-    const blueprintId = Number(option?.blueprintId);
+    const blueprintId = Number(option?.blueprintId ?? option?.blueprintID);
     const recipe = Number.isFinite(blueprintId) ? getRecipe(graph, blueprintId) : null;
-    const selectedOutput = recipe ? getRecipeOutputForType(recipe, typeId) : null;
+    const optionRecipe = recipe || option;
+    const selectedOutput = getRecipeOutputForType(optionRecipe, typeId);
     const outputQuantity = Math.max(1, Number(option?.outputQuantity ?? selectedOutput?.quantity) || 1);
-    const runtime = Number(option?.runtime ?? option?.runTime ?? recipe?.runTime) || 0;
-    const graphInputHint = recipe?.inputs?.[0]
-      ? `${getItem(graph, recipe.inputs[0].typeID)?.name ?? `Type ${recipe.inputs[0].typeID}`} x${formatNumber(recipe.inputs[0].quantity)}`
+    const runtime = Number(option?.runtime ?? option?.runTime ?? optionRecipe?.runTime) || 0;
+    const graphInputHint = optionRecipe?.inputs?.[0]
+      ? `${getItem(graph, optionRecipe.inputs[0].typeID)?.name ?? `Type ${optionRecipe.inputs[0].typeID}`} x${formatNumber(optionRecipe.inputs[0].quantity)}`
       : null;
 
     return {
@@ -1387,7 +1388,7 @@
       interactionId: "managed-default-workspace",
       optionTypeDataAttribute: "data-managed-default-workspace-option-type-id",
       optionRootDataAttribute: "data-managed-default-workspace-option-root-key",
-      scopeNote: "Applies to current filtered recipe path.",
+      scopeNote: "This choice applies to all occurrences of this item in the current plan.",
       stateDetailLabel: preset?.isCustomized ? "overridden" : "default",
       emptyMessage: "Choose a material on the left to edit its default recipe path.",
     });

@@ -497,7 +497,8 @@ test("renderManagedDefaultRecipePathsMarkup renders a split drawer with planner-
   assert.match(markup, /planner-decision-option/);
   assert.match(markup, /<span class="summary-key">STATE<\/span>/);
   assert.match(markup, />default<\/strong>/);
-  assert.match(markup, /Applies as global default for calculator targets\./);
+  assert.match(markup, /This choice applies to all occurrences of this item in the current plan\./);
+  assert.match(markup, /\[[LMSP]\] out \d+ · \d+s · [^<]+ x\d+/);
 });
 
 test("filterManagedDefaultRecipePresetsForSelection shows only managed direct inputs and descendants", () => {
@@ -545,9 +546,10 @@ test("renderManagedDefaultRecipeWorkspaceMarkup renders filtered workspace cards
   assert.match(markup, /Visible managed/);
   assert.match(markup, /default-recipe-layout default-recipe-workspace-layout/);
   assert.match(markup, /<span class="summary-key">STATE<\/span>/);
-  assert.match(markup, /Applies to current filtered recipe path\./);
+  assert.match(markup, /This choice applies to all occurrences of this item in the current plan\./);
   assert.match(markup, /data-managed-default-workspace-root-select-key="silicon-dust"/);
   assert.match(markup, /planner-decision-option/);
+  assert.match(markup, /\[[LMSP]\] out \d+ · \d+s · [^<]+ x\d+/);
   assert.doesNotMatch(markup, /Carbon Weave/);
 });
 
