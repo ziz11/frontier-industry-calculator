@@ -51,16 +51,17 @@
   }
 
   const FACILITY_PREFIX_ORDER = ["L", "M", "S", "P"];
+  const DEFAULT_PREFERRED_ROUTE_ORDER = ["S", "M", "L", "P", "L/M", "OTHER"];
   const MANAGED_DEFAULT_RECIPE_STORAGE_KEY = "frontier-industry-calculator:managed-default-recipes:v2";
   const MANAGED_DEFAULT_RECIPE_ROOTS = [
-    { key: "reinforced-alloys", name: "Reinforced Alloys", preferredPrefixes: [] },
-    { key: "carbon-weave", name: "Carbon Weave", preferredPrefixes: [] },
-    { key: "thermal-composites", name: "Thermal Composites", preferredPrefixes: [] },
-    { key: "silicon-dust", name: "Silicon Dust", preferredPrefixes: [] },
-    { key: "tholin-aggregates", name: "Tholin Aggregates", preferredPrefixes: [] },
-    { key: "feldspar-crystal-shards", name: "Feldspar Crystal Shards", preferredPrefixes: [] },
-    { key: "hydrocarbon-residue", name: "Hydrocarbon Residue", preferredPrefixes: [] },
-    { key: "nickel-iron-veins", name: "Nickel-Iron Veins", preferredPrefixes: [] },
+    { key: "reinforced-alloys", name: "Reinforced Alloys", preferredPrefixes: DEFAULT_PREFERRED_ROUTE_ORDER },
+    { key: "carbon-weave", name: "Carbon Weave", preferredPrefixes: DEFAULT_PREFERRED_ROUTE_ORDER },
+    { key: "thermal-composites", name: "Thermal Composites", preferredPrefixes: DEFAULT_PREFERRED_ROUTE_ORDER },
+    { key: "silicon-dust", name: "Silicon Dust", preferredPrefixes: DEFAULT_PREFERRED_ROUTE_ORDER },
+    { key: "tholin-aggregates", name: "Tholin Aggregates", preferredPrefixes: DEFAULT_PREFERRED_ROUTE_ORDER },
+    { key: "feldspar-crystal-shards", name: "Feldspar Crystal Shards", preferredPrefixes: DEFAULT_PREFERRED_ROUTE_ORDER },
+    { key: "hydrocarbon-residue", name: "Hydrocarbon Residue", preferredPrefixes: DEFAULT_PREFERRED_ROUTE_ORDER },
+    { key: "nickel-iron-veins", name: "Nickel-Iron Veins", preferredPrefixes: DEFAULT_PREFERRED_ROUTE_ORDER },
   ];
   const KNOWN_FACILITY_PREFIX_BY_TYPE_ID = {
     87119: "S", // Mini Printer
@@ -163,6 +164,36 @@
     return prefixes.length ? `[${prefixes.join("/")}]` : "";
   }
 
+  function classifyRecipeRoutePreference(graph, recipe) {
+    const blueprintId = Number(recipe?.blueprintID);
+    const rawPrefixes = Number.isFinite(blueprintId)
+      ? graph?.recipeFacilityPrefixesByBlueprint?.[blueprintId] ??
+        graph?.recipeFacilityPrefixesByBlueprint?.[String(blueprintId)] ??
+        recipe?.facilityPrefixes ??
+        recipe?.facilities ??
+        []
+      : recipe?.facilityPrefixes ?? recipe?.facilities ?? [];
+    const prefixes = toOrderedFacilityPrefixes(rawPrefixes);
+    const joined = prefixes.join("/");
+
+    if (prefixes.includes("S")) {
+      return "S";
+    }
+    if (prefixes.length === 1 && prefixes[0] === "M") {
+      return "M";
+    }
+    if (prefixes.length === 1 && prefixes[0] === "L") {
+      return "L";
+    }
+    if (prefixes.length === 1 && prefixes[0] === "P") {
+      return "P";
+    }
+    if (joined === "L/M") {
+      return "L/M";
+    }
+    return "OTHER";
+  }
+
   function getManagedRouteStateInfo(isCustomized = false) {
     const customized = Boolean(isCustomized);
     return {
@@ -213,7 +244,7 @@
     return normalized;
   }
 
-  function findPreferredRecipe(graph, typeID, preferredPrefixes = ["S"]) {
+  function findPreferredRecipe(graph, typeID, preferredPrefixes = DEFAULT_PREFERRED_ROUTE_ORDER) {
     const availableRecipes = getAvailableRecipesForType(graph, typeID);
     if (!availableRecipes.length) {
       return null;
@@ -222,24 +253,23 @@
     const normalizedPreferredPrefixes = (Array.isArray(preferredPrefixes) ? preferredPrefixes : [])
       .map((entry) => String(entry || "").trim())
       .filter(Boolean);
+    const effectivePreferenceOrder = normalizedPreferredPrefixes.length
+      ? normalizedPreferredPrefixes
+      : DEFAULT_PREFERRED_ROUTE_ORDER;
+    const preferenceRank = new Map(effectivePreferenceOrder.map((entry, index) => [entry, index]));
 
-    for (const prefix of normalizedPreferredPrefixes) {
-      const preferredRecipe = availableRecipes.find((recipe) => {
-        const prefixes =
-          graph?.recipeFacilityPrefixesByBlueprint?.[recipe.blueprintID] ??
-          graph?.recipeFacilityPrefixesByBlueprint?.[String(recipe.blueprintID)] ??
-          [];
-        return toOrderedFacilityPrefixes(prefixes).includes(prefix);
-      });
-      if (preferredRecipe) {
-        return preferredRecipe;
+    return availableRecipes.reduce((bestRecipe, candidateRecipe) => {
+      if (!bestRecipe) {
+        return candidateRecipe;
       }
-    }
 
-    return availableRecipes[0];
+      const bestRank = preferenceRank.get(classifyRecipeRoutePreference(graph, bestRecipe)) ?? Number.MAX_SAFE_INTEGER;
+      const candidateRank = preferenceRank.get(classifyRecipeRoutePreference(graph, candidateRecipe)) ?? Number.MAX_SAFE_INTEGER;
+      return candidateRank < bestRank ? candidateRecipe : bestRecipe;
+    }, null);
   }
 
-  function buildPreferredRecipeSelections(graph, typeID, preferredPrefixes = ["S"], selections = {}, activePath = new Set()) {
+  function buildPreferredRecipeSelections(graph, typeID, preferredPrefixes = DEFAULT_PREFERRED_ROUTE_ORDER, selections = {}, activePath = new Set()) {
     const safeTypeID = Number(typeID);
     if (!graph || !Number.isFinite(safeTypeID) || activePath.has(safeTypeID)) {
       return selections;
@@ -3454,7 +3484,6 @@
 
   function bindBrowserApp() {
     const graphFileInput = document.getElementById("graphFile");
-    const folderInput = document.getElementById("folderInput");
     const iconZipInput = document.getElementById("iconZipFile");
     const statusPill = document.getElementById("statusPill");
     const workspaceHeaderTarget = document.getElementById("workspaceHeaderTarget");
@@ -3969,7 +3998,7 @@
       }
 
       if (!state.graph) {
-        searchResults.innerHTML = `<li class="result-empty">Load a graph or stripped folder first.</li>`;
+        searchResults.innerHTML = `<li class="result-empty">Load a graph first.</li>`;
         catalogBranchTitle.textContent = "No catalog loaded";
         catalogBranchCount.textContent = "";
         return;
@@ -4361,22 +4390,6 @@
         setGraph(graph, `Graph loaded: ${file.name}`);
       } catch (error) {
         setStatus(`Failed to load graph: ${error.message}`, "error");
-      }
-    }
-
-    async function handleFolderSelection(event) {
-      const files = Array.from(event.target.files || []);
-      if (!files.length) {
-        return;
-      }
-
-      setStatus("Building runtime graph from stripped folder...", "loading");
-
-      try {
-        const graph = await createGraphFromFolderFiles(files);
-        setGraph(graph, `Stripped folder loaded: ${graph.meta.snapshot}`);
-      } catch (error) {
-        setStatus(`Failed to load stripped folder: ${error.message}`, "error");
       }
     }
 
@@ -4780,7 +4793,6 @@
     }
 
     graphFileInput?.addEventListener("change", handleGraphFileSelection);
-    folderInput?.addEventListener("change", handleFolderSelection);
     iconZipInput?.addEventListener("change", handleIconZipSelection);
     openUploadModalButton?.addEventListener("click", handleUploadModalToggle);
     openDatasetDrawerButton?.addEventListener("click", () => toggleDrawer("dataset"));
