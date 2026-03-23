@@ -489,7 +489,21 @@
     const currentStateValue = preset.isCustomized ? "overridden" : "default";
     const stateLabel = currentStateValue;
     const currentBlueprintId = Number(preset?.rootRecipe?.blueprintID);
-    const recipeOptions = getAvailableRecipesForType(graph, preset.typeID);
+    const recipeOptions = getAvailableRecipesForType(graph, preset.typeID).map((recipe) => {
+      const selectedOutput = getRecipeOutputForType(recipe, preset.typeID);
+      const keyInputHint = recipe?.inputs?.[0]
+        ? `${getItem(graph, recipe.inputs[0].typeID)?.name ?? `Type ${recipe.inputs[0].typeID}`} x${formatNumber(
+            recipe.inputs[0].quantity,
+          )}`
+        : null;
+
+      return {
+        blueprintId: Number(recipe.blueprintID),
+        outputQuantity: Math.max(1, Number(selectedOutput?.quantity) || 1),
+        runtime: Number(recipe.runTime) || 0,
+        keyInputHint,
+      };
+    });
     const interactionId = String(options.interactionId || "managed-default-detail");
     const optionTypeDataAttribute = String(options.optionTypeDataAttribute || "data-managed-default-workspace-option-type-id");
     const optionRootDataAttribute = String(options.optionRootDataAttribute || "data-managed-default-workspace-option-root-key");
