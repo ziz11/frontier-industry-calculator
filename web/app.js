@@ -1387,8 +1387,9 @@
 
     const isActive = Boolean(options.isActive);
     const rootPrefixTag = getRecipeFacilityPrefixTag(graph, preset.rootRecipe) || "[Base]";
-    const stateLabel = preset.isCustomized ? "Custom path" : "Default";
+    const stateLabel = preset.isCustomized ? "Custom path" : "Default path";
     const stateValue = preset.isCustomized ? "overridden" : "default";
+    const recipeOptionCount = getAvailableRecipesForType(graph, preset.typeID).length;
 
     return `
       <section class="managed-default-workspace-card planner-decision-group${isActive ? " is-active" : ""}">
@@ -1399,14 +1400,15 @@
           aria-pressed="${String(isActive)}"
         >
           <span class="managed-default-workspace-main">
-            <span class="managed-default-workspace-copy">
+            <span class="managed-default-workspace-copy planner-decision-head-main">
               <span class="managed-default-workspace-label">${renderItemMarkup(preset.name, preset.typeID)}</span>
-              <span class="managed-default-workspace-meta">${escapeHtml(rootPrefixTag)} path</span>
+              <span class="planner-decision-type-meta">Type ${formatNumber(preset.typeID)}</span>
+              <span class="planner-decision-count">${formatNumber(recipeOptionCount)} recipe option${recipeOptionCount === 1 ? "" : "s"}</span>
             </span>
-            <span class="planner-decision-state-pill" data-state="${stateValue}">${escapeHtml(stateLabel)}</span>
+            <span class="planner-decision-state-pill" data-state="${stateValue}">${escapeHtml(stateValue)}</span>
           </span>
         </button>
-        <div class="managed-default-path-row" aria-hidden="true">
+        <div class="managed-default-path-row">
           <span class="managed-default-path-chip is-selected">${escapeHtml(rootPrefixTag)} path</span>
           <span class="managed-default-path-chip${preset.isCustomized ? " is-custom" : ""}">${escapeHtml(stateLabel)}</span>
         </div>
@@ -1415,58 +1417,14 @@
   }
 
   function buildManagedDefaultWorkspaceDetailMarkup(preset, graph) {
-    if (!preset) {
-      return `
-        <section class="managed-default-workspace-detail planner-decision-group">
-          <div class="planner-decision-group-head">
-            <div class="planner-decision-head-main">
-              <div class="planner-decision-type-meta">Default recipe paths</div>
-              <div class="planner-decision-count">No visible material selected</div>
-            </div>
-          </div>
-          <p class="planner-decision-scope-note">Choose a material on the left to edit its default recipe path.</p>
-        </section>
-      `;
-    }
-
-    const currentBlueprintId = Number(preset?.rootRecipe?.blueprintID);
-    const options = getAvailableRecipesForType(graph, preset.typeID);
-    const stateValue = preset.isCustomized ? "overridden" : "default";
-    const stateLabel = preset.isCustomized ? "Custom path" : "Default";
-
-    return `
-      <section class="managed-default-workspace-detail planner-decision-group is-active">
-        <div class="planner-decision-group-head">
-          <div class="planner-decision-head-main">
-            <div class="planner-decision-type-label">${renderItemMarkup(preset.name, preset.typeID)}</div>
-            <div class="planner-decision-type-meta">Type ${formatNumber(preset.typeID)}</div>
-            <div class="planner-decision-count">${formatNumber(options.length)} recipe option${options.length === 1 ? "" : "s"}</div>
-          </div>
-          <span class="planner-decision-state-pill" data-state="${stateValue}">${escapeHtml(stateLabel)}</span>
-        </div>
-        <div class="planner-decision-meta">
-          <span class="summary-key">State</span>
-          <strong class="planner-decision-state" data-state="${stateValue}">${escapeHtml(stateLabel)}</strong>
-        </div>
-        <p class="planner-decision-scope-note">
-          This choice applies whenever this material appears in the active recipe path.
-        </p>
-        <div class="planner-decision-options">
-          ${options
-            .map((option) =>
-              renderPlannerDecisionOptionMarkup({
-                option,
-                typeId: preset.typeID,
-                graph,
-                currentBlueprintId,
-                inputName: `managed-default-workspace-type-${preset.typeID}`,
-                inputAttributes: `data-managed-default-workspace-option-type-id="${preset.typeID}" data-managed-default-workspace-option-root-key="${preset.key}"`,
-              }),
-            )
-            .join("")}
-        </div>
-      </section>
-    `;
+    return buildManagedDefaultDetailMarkup(preset, graph, {
+      interactionId: "managed-default-workspace",
+      optionTypeDataAttribute: "data-managed-default-workspace-option-type-id",
+      optionRootDataAttribute: "data-managed-default-workspace-option-root-key",
+      scopeNote: "This choice applies to all occurrences of this item in the current filtered recipe path.",
+      stateDetailLabel: preset?.isCustomized ? "overridden" : "default",
+      emptyMessage: "Choose a material on the left to edit its default recipe path.",
+    });
   }
 
   function renderManagedDefaultRecipeWorkspaceMarkup(graph, presets = [], state = {}) {
@@ -4506,54 +4464,9 @@
       if (rootSelectButton) {
         const rootKey = rootSelectButton.dataset.managedDefaultRootSelectKey || "";
         state.managedDefaultActivePresetRootKey = rootKey;
-        state.managedDefaultExpandedPresetKeys = new Set([rootKey]);
-        state.activeManagedDefaultRecipeChooserRootKey = null;
-        state.activeManagedDefaultRecipeChooserTypeID = null;
         renderManagedDefaultRecipePresets();
         return;
       }
-
-      const rootToggleButton = target?.closest("[data-managed-default-root-toggle-key]");
-      if (rootToggleButton) {
-        const rootKey = rootToggleButton.dataset.managedDefaultRootToggleKey || "";
-        const isSameRoot = state.managedDefaultExpandedPresetKeys.has(rootKey);
-        state.managedDefaultActivePresetRootKey = rootKey;
-        state.managedDefaultExpandedPresetKeys = isSameRoot ? new Set() : new Set([rootKey]);
-        state.activeManagedDefaultRecipeChooserRootKey = null;
-        state.activeManagedDefaultRecipeChooserTypeID = null;
-        renderManagedDefaultRecipePresets();
-        return;
-      }
-
-      const recipeToggleButton = target?.closest("[data-default-preset-recipe-toggle-type-id]");
-      if (recipeToggleButton) {
-        const rootKey = recipeToggleButton.dataset.defaultPresetRootKey || "";
-        const typeID = Number(recipeToggleButton.dataset.defaultPresetRecipeToggleTypeId);
-        const isSameTarget =
-          state.activeManagedDefaultRecipeChooserRootKey === rootKey &&
-          Number(state.activeManagedDefaultRecipeChooserTypeID) === typeID;
-        state.activeManagedDefaultRecipeChooserRootKey = isSameTarget ? null : rootKey;
-        state.activeManagedDefaultRecipeChooserTypeID = isSameTarget ? null : typeID;
-        renderManagedDefaultRecipePresets();
-        return;
-      }
-
-      const rowToggle = target?.closest("[data-default-preset-row-toggle-node-id]");
-      if (!rowToggle) {
-        return;
-      }
-
-      const rootKey = rowToggle.dataset.defaultPresetRootKey || "";
-      const nodeId = rowToggle.dataset.defaultPresetRowToggleNodeId;
-      if (!state.managedDefaultExpandedNodeIdsByRoot[rootKey]) {
-        state.managedDefaultExpandedNodeIdsByRoot[rootKey] = new Set();
-      }
-      if (state.managedDefaultExpandedNodeIdsByRoot[rootKey].has(nodeId)) {
-        state.managedDefaultExpandedNodeIdsByRoot[rootKey].delete(nodeId);
-      } else {
-        state.managedDefaultExpandedNodeIdsByRoot[rootKey].add(nodeId);
-      }
-      renderManagedDefaultRecipePresets();
     }
 
     function handleOutlineRecipeChange(event) {
@@ -4575,6 +4488,20 @@
         select.dataset.defaultPresetRootKey || "",
         Number(select.dataset.defaultPresetRecipeTypeId),
         select.value,
+      );
+    }
+
+    function handleManagedDefaultDrawerChange(event) {
+      const target = getEventTargetElement(event);
+      const input = target?.closest("[data-managed-default-drawer-option-type-id]");
+      if (!input) {
+        return;
+      }
+
+      handleManagedDefaultRecipeSelection(
+        input.dataset.managedDefaultDrawerOptionRootKey || "",
+        Number(input.dataset.managedDefaultDrawerOptionTypeId),
+        input.value,
       );
     }
 
@@ -4824,6 +4751,7 @@
     summaryRecipeSelect?.addEventListener("change", handleSummaryRecipeChange);
     defaultRecipePresetsList?.addEventListener("click", handleManagedDefaultPresetClick);
     defaultRecipePresetsList?.addEventListener("change", handleManagedDefaultRecipeChange);
+    defaultRecipePresetsList?.addEventListener("change", handleManagedDefaultDrawerChange);
     workspaceTabPlan?.addEventListener("click", handleWorkspaceTabChange);
     workspaceTabPipeline?.addEventListener("click", handleWorkspaceTabChange);
     workspaceTabTree?.addEventListener("click", handleWorkspaceTabChange);

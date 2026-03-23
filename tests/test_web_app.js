@@ -476,30 +476,26 @@ test("buildManagedDefaultPresetCardMarkup exposes the root path summary and cont
 
   const markup = buildManagedDefaultPresetCardMarkup(preset, managedDefaultGraph, {
     isActive: true,
-    isOpen: true,
   });
 
   assert.match(markup, /\[S\] path/);
-  assert.match(markup, /Custom path/);
+  assert.match(markup, /Type 500/);
+  assert.match(markup, /default/);
   assert.match(markup, /data-managed-default-root-select-key="reinforced-alloys"/);
-  assert.match(markup, /data-managed-default-root-toggle-key="reinforced-alloys"/);
 });
 
-test("renderManagedDefaultRecipePathsMarkup renders a split drawer with an active detail tree", () => {
+test("renderManagedDefaultRecipePathsMarkup renders a split drawer with planner-style detail cards", () => {
   const presets = buildManagedDefaultRecipePresets(managedDefaultGraph, {});
   const markup = renderManagedDefaultRecipePathsMarkup(managedDefaultGraph, presets, {
     activeRootKey: "reinforced-alloys",
-    openRootKey: "reinforced-alloys",
-    expandedNodeIdsByRoot: {
-      "reinforced-alloys": new Set(),
-    },
   });
 
   assert.match(markup, /default-recipe-summary/);
   assert.match(markup, /default-recipe-layout/);
   assert.match(markup, /data-managed-default-root-detail-key="reinforced-alloys"/);
   assert.match(markup, /default-recipe-detail/);
-  assert.match(markup, /outline-list/);
+  assert.match(markup, /planner-decision-option/);
+  assert.match(markup, /This choice updates the global default recipe path/);
 });
 
 test("filterManagedDefaultRecipePresetsForSelection shows only managed direct inputs and descendants", () => {
