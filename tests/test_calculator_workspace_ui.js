@@ -32,13 +32,18 @@ test("calculator workspace reducer switches across direct plan pipeline and tree
     type: "set-workspace-tab",
     tab: "tree",
   });
-  const backToPlan = reduceCalculatorWorkspaceState(withTree, {
+  const withDefaultRecipes = reduceCalculatorWorkspaceState(withTree, {
+    type: "set-workspace-tab",
+    tab: "default-recipes",
+  });
+  const backToPlan = reduceCalculatorWorkspaceState(withDefaultRecipes, {
     type: "set-workspace-tab",
     tab: "plan",
   });
 
   assert.equal(withPipeline.activeWorkspaceTab, "pipeline");
   assert.equal(withTree.activeWorkspaceTab, "tree");
+  assert.equal(withDefaultRecipes.activeWorkspaceTab, "default-recipes");
   assert.equal(backToPlan.activeWorkspaceTab, "plan");
 });
 

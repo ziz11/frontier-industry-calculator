@@ -4,7 +4,9 @@ const assert = require("node:assert/strict");
 const {
   buildManagedDefaultRecipePresets,
   buildManagedDefaultPresetCardMarkup,
+  filterManagedDefaultRecipePresetsForSelection,
   renderManagedDefaultRecipePathsMarkup,
+  renderManagedDefaultRecipeWorkspaceMarkup,
   buildGraphFromStrippedData,
   buildDependencyTree,
   buildCatalogTree,
@@ -145,7 +147,13 @@ const managedDefaultGraph = {
     500: { typeID: 500, name: "Reinforced Alloys", isBaseMaterial: false, isCraftable: true },
     510: { typeID: 510, name: "Carbon Weave", isBaseMaterial: false, isCraftable: true },
     520: { typeID: 520, name: "Thermal Composites", isBaseMaterial: false, isCraftable: true },
+    700: { typeID: 700, name: "Silicon Dust", isBaseMaterial: false, isCraftable: true },
+    710: { typeID: 710, name: "Tholin Aggregates", isBaseMaterial: false, isCraftable: true },
+    720: { typeID: 720, name: "Feldspar Crystal Shards", isBaseMaterial: false, isCraftable: true },
+    730: { typeID: 730, name: "Hydrocarbon Residue", isBaseMaterial: false, isCraftable: true },
+    740: { typeID: 740, name: "Nickel-Iron Veins", isBaseMaterial: false, isCraftable: true },
     530: { typeID: 530, name: "Binder Matrix", isBaseMaterial: false, isCraftable: true },
+    990: { typeID: 990, name: "Frontier Frame", isBaseMaterial: false, isCraftable: true },
     900: { typeID: 900, name: "Raw Ore A", isBaseMaterial: true, isCraftable: false },
   },
   recipes: {
@@ -153,14 +161,20 @@ const managedDefaultGraph = {
       blueprintID: 5001,
       primaryTypeID: 500,
       runTime: 5,
-      inputs: [{ typeID: 530, quantity: 2 }],
+      inputs: [
+        { typeID: 530, quantity: 2 },
+        { typeID: 740, quantity: 1 },
+      ],
       outputs: [{ typeID: 500, quantity: 1 }],
     },
     5002: {
       blueprintID: 5002,
       primaryTypeID: 500,
       runTime: 6,
-      inputs: [{ typeID: 530, quantity: 2 }],
+      inputs: [
+        { typeID: 530, quantity: 2 },
+        { typeID: 740, quantity: 1 },
+      ],
       outputs: [{ typeID: 500, quantity: 1 }],
     },
     5101: {
@@ -191,6 +205,76 @@ const managedDefaultGraph = {
       inputs: [{ typeID: 530, quantity: 3 }],
       outputs: [{ typeID: 520, quantity: 1 }],
     },
+    7001: {
+      blueprintID: 7001,
+      primaryTypeID: 700,
+      runTime: 6,
+      inputs: [{ typeID: 710, quantity: 2 }],
+      outputs: [{ typeID: 700, quantity: 1 }],
+    },
+    7002: {
+      blueprintID: 7002,
+      primaryTypeID: 700,
+      runTime: 5,
+      inputs: [{ typeID: 720, quantity: 2 }],
+      outputs: [{ typeID: 700, quantity: 1 }],
+    },
+    7101: {
+      blueprintID: 7101,
+      primaryTypeID: 710,
+      runTime: 5,
+      inputs: [{ typeID: 900, quantity: 3 }],
+      outputs: [{ typeID: 710, quantity: 1 }],
+    },
+    7102: {
+      blueprintID: 7102,
+      primaryTypeID: 710,
+      runTime: 4,
+      inputs: [{ typeID: 900, quantity: 2 }],
+      outputs: [{ typeID: 710, quantity: 1 }],
+    },
+    7201: {
+      blueprintID: 7201,
+      primaryTypeID: 720,
+      runTime: 5,
+      inputs: [{ typeID: 900, quantity: 3 }],
+      outputs: [{ typeID: 720, quantity: 1 }],
+    },
+    7202: {
+      blueprintID: 7202,
+      primaryTypeID: 720,
+      runTime: 4,
+      inputs: [{ typeID: 900, quantity: 2 }],
+      outputs: [{ typeID: 720, quantity: 1 }],
+    },
+    7301: {
+      blueprintID: 7301,
+      primaryTypeID: 730,
+      runTime: 6,
+      inputs: [{ typeID: 900, quantity: 4 }],
+      outputs: [{ typeID: 730, quantity: 1 }],
+    },
+    7302: {
+      blueprintID: 7302,
+      primaryTypeID: 730,
+      runTime: 5,
+      inputs: [{ typeID: 900, quantity: 3 }],
+      outputs: [{ typeID: 730, quantity: 1 }],
+    },
+    7401: {
+      blueprintID: 7401,
+      primaryTypeID: 740,
+      runTime: 6,
+      inputs: [{ typeID: 900, quantity: 4 }],
+      outputs: [{ typeID: 740, quantity: 1 }],
+    },
+    7402: {
+      blueprintID: 7402,
+      primaryTypeID: 740,
+      runTime: 5,
+      inputs: [{ typeID: 900, quantity: 3 }],
+      outputs: [{ typeID: 740, quantity: 1 }],
+    },
     5301: {
       blueprintID: 5301,
       primaryTypeID: 530,
@@ -205,12 +289,28 @@ const managedDefaultGraph = {
       inputs: [{ typeID: 900, quantity: 1 }],
       outputs: [{ typeID: 530, quantity: 1 }],
     },
+    9901: {
+      blueprintID: 9901,
+      primaryTypeID: 990,
+      runTime: 12,
+      inputs: [
+        { typeID: 500, quantity: 2 },
+        { typeID: 700, quantity: 3 },
+      ],
+      outputs: [{ typeID: 990, quantity: 1 }],
+    },
   },
   recipesByOutput: {
     500: [5001, 5002],
     510: [5101, 5102],
     520: [5201, 5202],
+    700: [7001, 7002],
+    710: [7101, 7102],
+    720: [7201, 7202],
+    730: [7301, 7302],
+    740: [7401, 7402],
     530: [5301, 5302],
+    990: [9901],
   },
   recipeFacilityPrefixesByBlueprint: {
     5001: ["M"],
@@ -219,8 +319,19 @@ const managedDefaultGraph = {
     5102: ["S"],
     5201: ["P"],
     5202: ["S"],
+    7001: ["L"],
+    7002: ["S"],
+    7101: ["M"],
+    7102: ["S"],
+    7201: ["M"],
+    7202: ["S"],
+    7301: ["M"],
+    7302: ["S"],
+    7401: ["M"],
+    7402: ["S"],
     5301: ["M"],
     5302: ["S"],
+    9901: ["M"],
   },
   baseMaterials: [900],
 };
@@ -323,11 +434,21 @@ test("buildManagedDefaultRecipePresets initializes managed roots with S-preferri
     "Reinforced Alloys",
     "Carbon Weave",
     "Thermal Composites",
+    "Silicon Dust",
+    "Tholin Aggregates",
+    "Feldspar Crystal Shards",
+    "Hydrocarbon Residue",
+    "Nickel-Iron Veins",
   ]);
   assert.equal(presets[0].typeID, 500);
   assert.equal(presets[0].recipeSelections[500], 5002);
   assert.equal(presets[1].recipeSelections[510], 5102);
   assert.equal(presets[2].recipeSelections[520], 5202);
+  assert.equal(presets[3].recipeSelections[700], 7002);
+  assert.equal(presets[4].recipeSelections[710], 7102);
+  assert.equal(presets[5].recipeSelections[720], 7202);
+  assert.equal(presets[6].recipeSelections[730], 7302);
+  assert.equal(presets[7].recipeSelections[740], 7402);
   assert.equal(presets[0].recipeSelections[530], 5302);
 });
 
@@ -342,6 +463,11 @@ test("mergeManagedDefaultRecipeSelections preserves isolated stored overrides pe
     510: 5101,
     520: 5202,
     530: 5301,
+    700: 7002,
+    710: 7102,
+    720: 7202,
+    730: 7302,
+    740: 7402,
   });
 });
 
@@ -374,6 +500,69 @@ test("renderManagedDefaultRecipePathsMarkup renders a split drawer with an activ
   assert.match(markup, /data-managed-default-root-detail-key="reinforced-alloys"/);
   assert.match(markup, /default-recipe-detail/);
   assert.match(markup, /outline-list/);
+});
+
+test("filterManagedDefaultRecipePresetsForSelection shows only managed direct inputs and descendants", () => {
+  const presets = buildManagedDefaultRecipePresets(managedDefaultGraph, {});
+  const visiblePresets = filterManagedDefaultRecipePresetsForSelection(
+    managedDefaultGraph,
+    presets,
+    990,
+    mergeManagedDefaultRecipeSelections(presets),
+  );
+
+  assert.deepEqual(
+    visiblePresets.map((preset) => preset.name),
+    ["Reinforced Alloys", "Silicon Dust", "Feldspar Crystal Shards", "Nickel-Iron Veins"],
+  );
+});
+
+test("filterManagedDefaultRecipePresetsForSelection follows current managed recipe selections", () => {
+  const presets = buildManagedDefaultRecipePresets(managedDefaultGraph, {
+    "silicon-dust": {
+      700: 7001,
+    },
+  });
+  const visiblePresets = filterManagedDefaultRecipePresetsForSelection(
+    managedDefaultGraph,
+    presets,
+    990,
+    mergeManagedDefaultRecipeSelections(presets),
+  );
+
+  assert.deepEqual(
+    visiblePresets.map((preset) => preset.name),
+    ["Reinforced Alloys", "Silicon Dust", "Tholin Aggregates", "Nickel-Iron Veins"],
+  );
+});
+
+test("renderManagedDefaultRecipeWorkspaceMarkup renders filtered workspace cards", () => {
+  const presets = buildManagedDefaultRecipePresets(managedDefaultGraph, {});
+  const markup = renderManagedDefaultRecipeWorkspaceMarkup(managedDefaultGraph, presets, {
+    selectedTypeID: 990,
+    recipeSelections: mergeManagedDefaultRecipeSelections(presets),
+    activeRootKey: "silicon-dust",
+  });
+
+  assert.match(markup, /Visible managed/);
+  assert.match(markup, /data-managed-default-workspace-root-select-key="silicon-dust"/);
+  assert.match(markup, /planner-decision-option/);
+  assert.doesNotMatch(markup, /Carbon Weave/);
+});
+
+test("renderManagedDefaultRecipeWorkspaceMarkup shows empty states for no target and no matches", () => {
+  const presets = buildManagedDefaultRecipePresets(managedDefaultGraph, {});
+  const noTargetMarkup = renderManagedDefaultRecipeWorkspaceMarkup(managedDefaultGraph, presets, {
+    selectedTypeID: null,
+    recipeSelections: mergeManagedDefaultRecipeSelections(presets),
+  });
+  const noMatchesMarkup = renderManagedDefaultRecipeWorkspaceMarkup(managedDefaultGraph, presets, {
+    selectedTypeID: 530,
+    recipeSelections: mergeManagedDefaultRecipeSelections(presets),
+  });
+
+  assert.match(noTargetMarkup, /Select a target to filter managed defaults for the active recipe\./);
+  assert.match(noMatchesMarkup, /This recipe path does not use any managed default materials\./);
 });
 
 test("createRecipeSummary handles ceil runs and preserves byproducts for multi-output recipes", () => {
@@ -765,6 +954,39 @@ test("renderCompactProgressListMarkup supports inline progress editing controls"
   assert.match(markup, /Need 8/);
   assert.match(markup, /Mined/);
   assert.doesNotMatch(markup, /<table/);
+});
+
+test("renderCompactProgressListMarkup keeps completed rows visible", () => {
+  const markup = renderCompactProgressListMarkup("Materials", [
+    {
+      typeID: 100,
+      name: "Raw Ore A",
+      need: 8,
+      have: 8,
+      remaining: 0,
+      progressPercent: 100,
+      status: "ready",
+    },
+    {
+      typeID: 200,
+      name: "Raw Ore B",
+      need: 10,
+      have: 4,
+      remaining: 6,
+      progressPercent: 40,
+      status: "partial",
+    },
+  ], {
+    expanded: true,
+    interactive: true,
+    doneLabel: "mined",
+  });
+
+  assert.match(markup, /Raw Ore A/);
+  assert.match(markup, /Raw Ore B/);
+  assert.match(markup, /Mined 8/);
+  assert.match(markup, /Need 10/);
+  assert.match(markup, /checkbox/);
 });
 
 test("renderCompactProgressListMarkup keeps list order stable when a row is marked done", () => {

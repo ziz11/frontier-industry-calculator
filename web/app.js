@@ -56,6 +56,11 @@
     { key: "reinforced-alloys", name: "Reinforced Alloys", preferredPrefixes: ["S"] },
     { key: "carbon-weave", name: "Carbon Weave", preferredPrefixes: ["S"] },
     { key: "thermal-composites", name: "Thermal Composites", preferredPrefixes: ["S"] },
+    { key: "silicon-dust", name: "Silicon Dust", preferredPrefixes: ["S"] },
+    { key: "tholin-aggregates", name: "Tholin Aggregates", preferredPrefixes: ["S"] },
+    { key: "feldspar-crystal-shards", name: "Feldspar Crystal Shards", preferredPrefixes: ["S"] },
+    { key: "hydrocarbon-residue", name: "Hydrocarbon Residue", preferredPrefixes: ["S"] },
+    { key: "nickel-iron-veins", name: "Nickel-Iron Veins", preferredPrefixes: ["S"] },
   ];
   const KNOWN_FACILITY_PREFIX_BY_TYPE_ID = {
     87119: "S", // Mini Printer
@@ -290,6 +295,86 @@
     return merged;
   }
 
+  function buildManagedDefaultTypeIdSet(presets = []) {
+    return new Set(
+      (Array.isArray(presets) ? presets : [])
+        .map((preset) => Number(preset?.typeID))
+        .filter(Number.isFinite),
+    );
+  }
+
+  function mergeRecipeSelectionsWithManagedDefaults(currentSelections = {}, managedSelections = {}, presets = []) {
+    const managedTypeIds = buildManagedDefaultTypeIdSet(presets);
+    const merged = {};
+
+    for (const [typeID, recipeID] of Object.entries(currentSelections || {})) {
+      const safeTypeID = Number(typeID);
+      const safeRecipeID = Number(recipeID);
+      if (!Number.isFinite(safeTypeID) || !Number.isFinite(safeRecipeID) || managedTypeIds.has(safeTypeID)) {
+        continue;
+      }
+      merged[safeTypeID] = safeRecipeID;
+    }
+
+    return {
+      ...merged,
+      ...managedSelections,
+    };
+  }
+
+  function collectManagedDefaultReachableTypeIds(graph, selectedTypeID, recipeSelections = {}) {
+    const safeTypeID = Number(selectedTypeID);
+    if (!graph || !Number.isFinite(safeTypeID)) {
+      return new Set();
+    }
+
+    const rootRecipe = resolveRecipeChoice(graph, safeTypeID, recipeSelections);
+    if (!rootRecipe) {
+      return new Set();
+    }
+
+    const reachable = new Set();
+    const visited = new Set();
+
+    function visitType(typeID) {
+      const safeChildTypeID = Number(typeID);
+      if (!Number.isFinite(safeChildTypeID) || visited.has(safeChildTypeID)) {
+        return;
+      }
+
+      visited.add(safeChildTypeID);
+      reachable.add(safeChildTypeID);
+
+      const childRecipe = resolveRecipeChoice(graph, safeChildTypeID, recipeSelections);
+      if (!childRecipe) {
+        return;
+      }
+
+      for (const input of childRecipe.inputs || []) {
+        visitType(input.typeID);
+      }
+    }
+
+    for (const input of rootRecipe.inputs || []) {
+      visitType(input.typeID);
+    }
+
+    return reachable;
+  }
+
+  function filterManagedDefaultRecipePresetsForSelection(graph, presets = [], selectedTypeID = null, recipeSelections = {}) {
+    if (!graph) {
+      return [];
+    }
+
+    const reachableTypeIds = collectManagedDefaultReachableTypeIds(graph, selectedTypeID, recipeSelections);
+    if (!reachableTypeIds.size) {
+      return [];
+    }
+
+    return (Array.isArray(presets) ? presets : []).filter((preset) => reachableTypeIds.has(Number(preset?.typeID)));
+  }
+
   function loadStoredManagedDefaultRecipePresets(storage) {
     if (!storage || typeof storage.getItem !== "function") {
       return {};
@@ -341,131 +426,122 @@
     }
 
     const isActive = Boolean(options.isActive);
-    const isOpen = Boolean(options.isOpen);
-    const rootPrefixTag = getRecipeFacilityPrefixTag(graph, preset.rootRecipe) || "Base";
-    const currentPathLabel = preset.isCustomized ? "Custom path" : "S path";
+    const rootPrefixTag = getRecipeFacilityPrefixTag(graph, preset.rootRecipe) || "[Base]";
+    const currentPathLabel = preset.isCustomized ? "Custom path" : "Default path";
     const currentStateValue = preset.isCustomized ? "overridden" : "default";
+    const recipeOptionCount = getAvailableRecipesForType(graph, preset.typeID).length;
 
     return `
       <section
-        class="managed-default-root-card planner-decision-group${isActive ? " is-active" : ""}${isOpen ? " is-open" : ""}"
+        class="managed-default-root-card planner-decision-group${isActive ? " is-active" : ""}"
         data-managed-default-root-key="${preset.key}"
       >
-        <div class="managed-default-card-head planner-decision-group-head">
-          <button
-            type="button"
-            class="managed-default-root-select"
-            data-managed-default-root-select-key="${preset.key}"
-            aria-pressed="${String(isActive)}"
-          >
-            <span class="managed-default-root-select-main">
-              ${renderItemMarkup(preset.name, preset.typeID)}
-              <span class="managed-default-summary-copy">
-                <span class="managed-default-summary-line">${escapeHtml(rootPrefixTag)} path</span>
-                <span class="managed-default-summary-line managed-default-summary-line-muted">
-                  ${escapeHtml(currentPathLabel)}
-                </span>
+        <button
+          type="button"
+          class="managed-default-root-select"
+          data-managed-default-root-select-key="${preset.key}"
+          aria-pressed="${String(isActive)}"
+        >
+          <div class="managed-default-card-head planner-decision-group-head">
+            <div class="planner-decision-head-main managed-default-root-select-main">
+              <div class="managed-default-workspace-label">${renderItemMarkup(preset.name, preset.typeID)}</div>
+              <div class="planner-decision-type-meta">Type ${formatNumber(preset.typeID)}</div>
+              <div class="planner-decision-count">${formatNumber(recipeOptionCount)} recipe option${recipeOptionCount === 1 ? "" : "s"}</div>
+            </div>
+            <div class="managed-default-summary-side">
+              <span class="planner-decision-state-pill" data-state="${currentStateValue}">
+                ${escapeHtml(currentStateValue)}
               </span>
-            </span>
-          </button>
-          <div class="managed-default-summary-side">
-            <span class="planner-decision-state-pill" data-state="${currentStateValue}">
-              ${escapeHtml(currentPathLabel)}
-            </span>
-            <button
-              type="button"
-              class="mini-button managed-default-expander"
-              data-managed-default-root-toggle-key="${preset.key}"
-              aria-expanded="${String(isOpen)}"
-              aria-label="${escapeHtml(isOpen ? `Collapse ${preset.name}` : `Open ${preset.name}`)}"
-            >
-              ${isOpen ? "−" : "+"}
-            </button>
+            </div>
           </div>
-        </div>
-        <div class="managed-default-path-row" aria-hidden="true">
+        </button>
+        <div class="managed-default-path-row">
           <span class="managed-default-path-chip is-selected">${escapeHtml(rootPrefixTag)} path</span>
-          <span class="managed-default-path-chip${preset.isCustomized ? " is-custom" : ""}">Custom path</span>
+          <span class="managed-default-path-chip${preset.isCustomized ? " is-custom" : ""}">${escapeHtml(currentPathLabel)}</span>
         </div>
       </section>
     `;
   }
 
-  function buildManagedDefaultPresetDetailMarkup(preset, graph, options = {}) {
+  function buildManagedDefaultDetailMarkup(preset, graph, options = {}) {
     if (!preset) {
       return `
-        <section class="managed-default-detail-panel planner-decision-group">
+        <section class="managed-default-detail-panel planner-decision-group managed-default-unified-detail">
           <div class="planner-decision-group-head">
             <div class="planner-decision-head-main">
               <div class="planner-decision-type-meta">Default recipe paths</div>
-              <div class="planner-decision-count">No preset selected</div>
+              <div class="planner-decision-count">No material selected</div>
             </div>
           </div>
-          <p class="planner-decision-scope-note">Choose a root on the left to inspect its path tree.</p>
+          <p class="planner-decision-scope-note">${escapeHtml(options.emptyMessage || "Choose a material on the left to edit its default recipe path.")}</p>
         </section>
       `;
     }
 
-    const isOpen = Boolean(options.isOpen);
-    const rootPrefixTag = getRecipeFacilityPrefixTag(graph, preset.rootRecipe) || "Base";
-    const currentPathLabel = preset.isCustomized ? "Custom path" : "S path";
+    const rootPrefixTag = getRecipeFacilityPrefixTag(graph, preset.rootRecipe) || "[Base]";
     const currentStateValue = preset.isCustomized ? "overridden" : "default";
-    const treeMarkup = isOpen
-      ? renderDependencyOutlineMarkup(preset.tree, new Map(), {
-          graph,
-          showRecipeDetails: false,
-          showTrackedStatus: false,
-          activeRecipeChooserTypeID:
-            options.activeManagedDefaultRecipeChooserRootKey === preset.key
-              ? options.activeManagedDefaultRecipeChooserTypeID
-              : null,
-          expandedNodeIds: options.expandedNodeIds || getDefaultExpandedNodeIds(preset.tree),
-          interactionScope: "default-preset",
-          interactionRootKey: preset.key,
-        })
-      : "";
+    const stateLabel = currentStateValue;
+    const currentBlueprintId = Number(preset?.rootRecipe?.blueprintID);
+    const recipeOptions = getAvailableRecipesForType(graph, preset.typeID);
+    const interactionId = String(options.interactionId || "managed-default-detail");
+    const optionTypeDataAttribute = String(options.optionTypeDataAttribute || "data-managed-default-workspace-option-type-id");
+    const optionRootDataAttribute = String(options.optionRootDataAttribute || "data-managed-default-workspace-option-root-key");
+    const scopeNote = options.scopeNote || "This choice applies whenever this material appears in the active recipe path.";
+    const stateDetailLabel = options.stateDetailLabel || stateLabel;
 
     return `
       <section
-        class="managed-default-detail-panel planner-decision-group${isOpen ? " is-open" : ""}"
+        class="managed-default-detail-panel planner-decision-group managed-default-unified-detail is-open"
         data-managed-default-root-detail-key="${preset.key}"
       >
         <div class="planner-decision-group-head">
           <div class="planner-decision-head-main">
             <div class="planner-decision-type-label">${renderItemMarkup(preset.name, preset.typeID)}</div>
             <div class="planner-decision-type-meta">Type ${formatNumber(preset.typeID)}</div>
-            <div class="planner-decision-count">${preset.tree?.availableRecipes?.length || 0} recipe path${
-              (preset.tree?.availableRecipes?.length || 0) === 1 ? "" : "s"
-            }</div>
+            <div class="planner-decision-count">${recipeOptions.length} recipe option${recipeOptions.length === 1 ? "" : "s"}</div>
           </div>
           <span class="planner-decision-state-pill" data-state="${currentStateValue}">
-            ${escapeHtml(currentPathLabel)}
+            ${escapeHtml(currentStateValue)}
           </span>
         </div>
         <div class="planner-decision-meta">
           <span class="summary-key">State</span>
-          <strong class="planner-decision-state" data-state="${currentStateValue}">${escapeHtml(currentPathLabel)}</strong>
+          <strong class="planner-decision-state" data-state="${currentStateValue}">${escapeHtml(stateDetailLabel)}</strong>
         </div>
-        <p class="planner-decision-scope-note">
-          ${
-            isOpen
-              ? `Open the tree to adjust alternate routes for ${escapeHtml(preset.name)}.`
-              : `This preset is collapsed. Open it to inspect subrecipes.`
-          }
-        </p>
         <div class="managed-default-detail-path">
           <span class="managed-default-path-chip is-selected">${escapeHtml(rootPrefixTag)} path</span>
-          <span class="managed-default-path-chip${preset.isCustomized ? " is-custom" : ""}">Custom path</span>
+          <span class="managed-default-path-chip${preset.isCustomized ? " is-custom" : ""}">${escapeHtml(
+            preset.isCustomized ? "Custom path" : "Default path",
+          )}</span>
         </div>
-        ${
-          isOpen
-            ? `
-              <div class="managed-default-tree">${treeMarkup}</div>
-            `
-            : ""
-        }
+        <p class="planner-decision-scope-note">${escapeHtml(scopeNote)}</p>
+        <div class="planner-decision-options">
+          ${recipeOptions
+            .map((option) =>
+              renderPlannerDecisionOptionMarkup({
+                option,
+                typeId: preset.typeID,
+                graph,
+                currentBlueprintId,
+                inputName: `${interactionId}-type-${preset.typeID}`,
+                inputAttributes: `${optionTypeDataAttribute}="${preset.typeID}" ${optionRootDataAttribute}="${preset.key}"`,
+              }),
+            )
+            .join("")}
+        </div>
       </section>
     `;
+  }
+
+  function buildManagedDefaultPresetDetailMarkup(preset, graph, options = {}) {
+    return buildManagedDefaultDetailMarkup(preset, graph, {
+      interactionId: "managed-default-drawer",
+      optionTypeDataAttribute: "data-managed-default-drawer-option-type-id",
+      optionRootDataAttribute: "data-managed-default-drawer-option-root-key",
+      scopeNote: options.scopeNote || "This choice updates the global default recipe path for every future calculator target.",
+      stateDetailLabel: options.stateDetailLabel || (preset?.isCustomized ? "overridden" : "default"),
+      emptyMessage: options.emptyMessage || "Choose a material on the left to edit its global default recipe path.",
+    });
   }
 
   function renderManagedDefaultRecipePathsMarkup(graph, presets = [], state = {}) {
@@ -477,7 +553,7 @@
 
     if (!Array.isArray(presets) || !presets.length) {
       return `
-        <div class="default-recipe-empty">This dataset does not expose Reinforced Alloys, Carbon Weave, and Thermal Composites together.</div>
+        <div class="default-recipe-empty">This dataset does not expose any managed default recipe paths.</div>
       `;
     }
 
@@ -486,12 +562,7 @@
       presets.some((preset) => preset.key === state.activeRootKey)
         ? state.activeRootKey
         : presets[0]?.key ?? null;
-    const hasOpenRootKey = Object.prototype.hasOwnProperty.call(state, "openRootKey");
-    const openRootKey = hasOpenRootKey
-      ? (presets.some((preset) => preset.key === state.openRootKey) ? state.openRootKey : null)
-      : activeRootKey;
     const activePreset = presets.find((preset) => preset.key === activeRootKey) ?? presets[0] ?? null;
-    const openPreset = presets.find((preset) => preset.key === openRootKey) ?? activePreset;
     const customizedCount = presets.filter((preset) => preset.isCustomized).length;
 
     const summaryMarkup = `
@@ -512,25 +583,18 @@
     `;
 
     const railMarkup = `
-      <section class="default-recipe-rail">
+        <section class="default-recipe-rail">
         ${presets
           .map((preset) =>
             buildManagedDefaultPresetCardMarkup(preset, graph, {
               isActive: preset.key === activeRootKey,
-              isOpen: preset.key === openRootKey,
             }),
           )
           .join("")}
       </section>
     `;
 
-    const detailMarkup = buildManagedDefaultPresetDetailMarkup(openPreset, graph, {
-      isOpen: Boolean(openPreset && openPreset.key === openRootKey),
-      activeManagedDefaultRecipeChooserRootKey: state.activeManagedDefaultRecipeChooserRootKey,
-      activeManagedDefaultRecipeChooserTypeID: state.activeManagedDefaultRecipeChooserTypeID,
-      expandedNodeIds:
-        (openPreset && state.expandedNodeIdsByRoot?.[openPreset.key]) || getDefaultExpandedNodeIds(openPreset?.tree),
-    });
+    const detailMarkup = buildManagedDefaultPresetDetailMarkup(activePreset, graph);
 
     return `
       <div class="default-recipe-shell">
@@ -1203,6 +1267,37 @@
     };
   }
 
+  function renderPlannerDecisionOptionMarkup({
+    option = {},
+    typeId,
+    graph = null,
+    currentBlueprintId = null,
+    inputName = "",
+    inputAttributes = "",
+  } = {}) {
+    const metadata = buildPlannerDecisionOptionMetadata(option, typeId, graph);
+    const checked = metadata.blueprintId === Number(currentBlueprintId);
+
+    return `
+      <label class="planner-decision-option${checked ? " is-selected" : ""}">
+        <input
+          type="radio"
+          name="${escapeHtml(inputName || `planner-decision-type-${typeId}`)}"
+          value="${metadata.blueprintId}"
+          ${inputAttributes}
+          ${checked ? "checked" : ""}
+        />
+        <span class="planner-decision-option-main">
+          <span class="planner-decision-option-title">${escapeHtml(metadata.label)}</span>
+          <span class="planner-decision-option-meta">Output ${formatNumber(metadata.outputQuantity)} · ${formatRuntime(
+            metadata.runtime,
+          )}</span>
+          ${metadata.keyInputHint ? `<span class="planner-decision-option-hint">${escapeHtml(metadata.keyInputHint)}</span>` : ""}
+        </span>
+      </label>
+    `;
+  }
+
   function renderPlannerDecisionPanelMarkup(model = {}, graph = null) {
     const plannerResult = model.plannerResult || {};
     const plannerState = model.plannerState || {};
@@ -1263,34 +1358,18 @@
             <p class="planner-decision-scope-note">This choice applies to all occurrences of this item in the current plan.</p>
             <div class="planner-decision-options">
               ${options
-                .map((option) => {
-                  const metadata = buildPlannerDecisionOptionMetadata(option, typeId, graph);
-                  const checked = metadata.blueprintId === currentBlueprintId;
-
-                  return `
-                    <label class="planner-decision-option${checked ? " is-selected" : ""}">
-                      <input
-                        type="radio"
-                        name="planner-decision-type-${typeId}"
-                        value="${metadata.blueprintId}"
-                        data-planner-decision-option-type-id="${typeId}"
-                        data-planner-decision-blueprint-id="${metadata.blueprintId}"
-                        ${checked ? "checked" : ""}
-                      />
-                      <span class="planner-decision-option-main">
-                        <span class="planner-decision-option-title">${escapeHtml(metadata.label)}</span>
-                        <span class="planner-decision-option-meta">Output ${formatNumber(metadata.outputQuantity)} · ${formatRuntime(
-                          metadata.runtime,
-                        )}</span>
-                        ${
-                          metadata.keyInputHint
-                            ? `<span class="planner-decision-option-hint">${escapeHtml(metadata.keyInputHint)}</span>`
-                            : ""
-                        }
-                      </span>
-                    </label>
-                  `;
-                })
+                .map((option) =>
+                  renderPlannerDecisionOptionMarkup({
+                    option,
+                    typeId,
+                    graph,
+                    currentBlueprintId,
+                    inputName: `planner-decision-type-${typeId}`,
+                    inputAttributes: `data-planner-decision-option-type-id="${typeId}" data-planner-decision-blueprint-id="${Number(
+                      option?.blueprintId,
+                    )}"`,
+                  }),
+                )
                 .join("")}
             </div>
           </section>
@@ -1299,6 +1378,154 @@
       .join("");
 
     return `${summaryMarkup}<div class="planner-decision-groups">${groupsMarkup}</div>`;
+  }
+
+  function buildManagedDefaultWorkspacePresetCardMarkup(preset, graph, options = {}) {
+    if (!preset) {
+      return "";
+    }
+
+    const isActive = Boolean(options.isActive);
+    const rootPrefixTag = getRecipeFacilityPrefixTag(graph, preset.rootRecipe) || "[Base]";
+    const stateLabel = preset.isCustomized ? "Custom path" : "Default";
+    const stateValue = preset.isCustomized ? "overridden" : "default";
+
+    return `
+      <section class="managed-default-workspace-card planner-decision-group${isActive ? " is-active" : ""}">
+        <button
+          type="button"
+          class="managed-default-workspace-select"
+          data-managed-default-workspace-root-select-key="${preset.key}"
+          aria-pressed="${String(isActive)}"
+        >
+          <span class="managed-default-workspace-main">
+            <span class="managed-default-workspace-copy">
+              <span class="managed-default-workspace-label">${renderItemMarkup(preset.name, preset.typeID)}</span>
+              <span class="managed-default-workspace-meta">${escapeHtml(rootPrefixTag)} path</span>
+            </span>
+            <span class="planner-decision-state-pill" data-state="${stateValue}">${escapeHtml(stateLabel)}</span>
+          </span>
+        </button>
+        <div class="managed-default-path-row" aria-hidden="true">
+          <span class="managed-default-path-chip is-selected">${escapeHtml(rootPrefixTag)} path</span>
+          <span class="managed-default-path-chip${preset.isCustomized ? " is-custom" : ""}">${escapeHtml(stateLabel)}</span>
+        </div>
+      </section>
+    `;
+  }
+
+  function buildManagedDefaultWorkspaceDetailMarkup(preset, graph) {
+    if (!preset) {
+      return `
+        <section class="managed-default-workspace-detail planner-decision-group">
+          <div class="planner-decision-group-head">
+            <div class="planner-decision-head-main">
+              <div class="planner-decision-type-meta">Default recipe paths</div>
+              <div class="planner-decision-count">No visible material selected</div>
+            </div>
+          </div>
+          <p class="planner-decision-scope-note">Choose a material on the left to edit its default recipe path.</p>
+        </section>
+      `;
+    }
+
+    const currentBlueprintId = Number(preset?.rootRecipe?.blueprintID);
+    const options = getAvailableRecipesForType(graph, preset.typeID);
+    const stateValue = preset.isCustomized ? "overridden" : "default";
+    const stateLabel = preset.isCustomized ? "Custom path" : "Default";
+
+    return `
+      <section class="managed-default-workspace-detail planner-decision-group is-active">
+        <div class="planner-decision-group-head">
+          <div class="planner-decision-head-main">
+            <div class="planner-decision-type-label">${renderItemMarkup(preset.name, preset.typeID)}</div>
+            <div class="planner-decision-type-meta">Type ${formatNumber(preset.typeID)}</div>
+            <div class="planner-decision-count">${formatNumber(options.length)} recipe option${options.length === 1 ? "" : "s"}</div>
+          </div>
+          <span class="planner-decision-state-pill" data-state="${stateValue}">${escapeHtml(stateLabel)}</span>
+        </div>
+        <div class="planner-decision-meta">
+          <span class="summary-key">State</span>
+          <strong class="planner-decision-state" data-state="${stateValue}">${escapeHtml(stateLabel)}</strong>
+        </div>
+        <p class="planner-decision-scope-note">
+          This choice applies whenever this material appears in the active recipe path.
+        </p>
+        <div class="planner-decision-options">
+          ${options
+            .map((option) =>
+              renderPlannerDecisionOptionMarkup({
+                option,
+                typeId: preset.typeID,
+                graph,
+                currentBlueprintId,
+                inputName: `managed-default-workspace-type-${preset.typeID}`,
+                inputAttributes: `data-managed-default-workspace-option-type-id="${preset.typeID}" data-managed-default-workspace-option-root-key="${preset.key}"`,
+              }),
+            )
+            .join("")}
+        </div>
+      </section>
+    `;
+  }
+
+  function renderManagedDefaultRecipeWorkspaceMarkup(graph, presets = [], state = {}) {
+    if (!graph) {
+      return `<div class="default-recipe-empty">Load data to configure default recipe paths.</div>`;
+    }
+
+    if (!Number.isFinite(toNumber(state.selectedTypeID))) {
+      return `<div class="default-recipe-empty">Select a target to filter managed defaults for the active recipe.</div>`;
+    }
+
+    const recipeSelections = state.recipeSelections || {};
+    const visiblePresets = filterManagedDefaultRecipePresetsForSelection(
+      graph,
+      presets,
+      state.selectedTypeID,
+      recipeSelections,
+    );
+
+    if (!visiblePresets.length) {
+      return `<div class="default-recipe-empty">This recipe path does not use any managed default materials.</div>`;
+    }
+
+    const activeRootKey = visiblePresets.some((preset) => preset.key === state.activeRootKey)
+      ? state.activeRootKey
+      : visiblePresets[0]?.key ?? null;
+    const activePreset = visiblePresets.find((preset) => preset.key === activeRootKey) ?? visiblePresets[0] ?? null;
+    const customizedCount = visiblePresets.filter((preset) => preset.isCustomized).length;
+
+    return `
+      <div class="default-recipe-workspace-shell">
+        <section class="planner-decision-summary default-recipe-summary">
+          <div class="planner-decision-summary-card">
+            <span class="summary-key">Visible managed</span>
+            <strong class="planner-decision-summary-value">${formatNumber(visiblePresets.length)}</strong>
+          </div>
+          <div class="planner-decision-summary-card">
+            <span class="summary-key">Customized</span>
+            <strong class="planner-decision-summary-value">${formatNumber(customizedCount)}</strong>
+          </div>
+          <div class="planner-decision-summary-card">
+            <span class="summary-key">Default</span>
+            <strong class="planner-decision-summary-value">${formatNumber(visiblePresets.length - customizedCount)}</strong>
+          </div>
+        </section>
+        <div class="default-recipe-workspace-layout">
+          <section class="default-recipe-workspace-list">
+            ${visiblePresets
+              .map((preset) =>
+                buildManagedDefaultWorkspacePresetCardMarkup(preset, graph, {
+                  isActive: preset.key === activeRootKey,
+                }),
+              )
+              .join("")}
+          </section>
+          ${buildManagedDefaultWorkspaceDetailMarkup(activePreset, graph)}
+        </div>
+      </div>
+    `;
   }
 
   function focusPlannerDecisionFromOutput(plannerRuntime, typeId) {
@@ -2060,7 +2287,12 @@
 
     switch (action.type) {
       case "set-workspace-tab":
-        if (action.tab === "plan" || action.tab === "pipeline" || action.tab === "tree") {
+        if (
+          action.tab === "plan" ||
+          action.tab === "pipeline" ||
+          action.tab === "tree" ||
+          action.tab === "default-recipes"
+        ) {
           state.activeWorkspaceTab = action.tab;
         }
         return state;
@@ -3248,9 +3480,12 @@
     const workspaceTabPlan = document.getElementById("workspaceTabPlan");
     const workspaceTabPipeline = document.getElementById("workspaceTabPipeline");
     const workspaceTabTree = document.getElementById("workspaceTabTree");
+    const workspaceTabDefaultRecipes = document.getElementById("workspaceTabDefaultRecipes");
     const planWorkspacePanel = document.getElementById("planWorkspacePanel");
     const pipelineWorkspacePanel = document.getElementById("pipelineWorkspacePanel");
     const treeWorkspacePanel = document.getElementById("treeWorkspacePanel");
+    const defaultRecipeWorkspacePanel = document.getElementById("defaultRecipeWorkspacePanel");
+    const defaultRecipeWorkspaceContent = document.getElementById("defaultRecipeWorkspaceContent");
     const dependencyPipeline = document.getElementById("dependencyPipeline");
     const dependencyPipelineContent = document.getElementById("dependencyPipelineContent");
     const treePreview = document.getElementById("treePreview");
@@ -3676,7 +3911,7 @@
       if (!state.managedDefaultRecipePresets.length) {
         defaultRecipePresetsMeta.textContent = "Unavailable";
         defaultRecipePresetsList.innerHTML = `
-          <p class="result-empty">This dataset does not expose Reinforced Alloys, Carbon Weave, and Thermal Composites together.</p>
+          <p class="result-empty">This dataset does not expose any managed default recipe paths.</p>
         `;
         return;
       }
@@ -3694,6 +3929,37 @@
         },
       );
       hydrateIcons(defaultRecipePresetsList, state.iconArchive);
+    }
+
+    function renderManagedDefaultRecipeWorkspace() {
+      if (!defaultRecipeWorkspaceContent) {
+        return;
+      }
+
+      const visiblePresets = filterManagedDefaultRecipePresetsForSelection(
+        state.graph,
+        state.managedDefaultRecipePresets,
+        state.selectedTypeID,
+        state.recipeSelections,
+      );
+      if (visiblePresets.length) {
+        state.managedDefaultActivePresetRootKey = visiblePresets.some(
+          (preset) => preset.key === state.managedDefaultActivePresetRootKey,
+        )
+          ? state.managedDefaultActivePresetRootKey
+          : visiblePresets[0].key;
+      }
+
+      defaultRecipeWorkspaceContent.innerHTML = renderManagedDefaultRecipeWorkspaceMarkup(
+        state.graph,
+        state.managedDefaultRecipePresets,
+        {
+          selectedTypeID: state.selectedTypeID,
+          recipeSelections: state.recipeSelections,
+          activeRootKey: state.managedDefaultActivePresetRootKey,
+        },
+      );
+      hydrateIcons(defaultRecipeWorkspaceContent, state.iconArchive);
     }
 
     function renderSearchResults() {
@@ -3962,6 +4228,7 @@
       const isPlan = state.workspaceUi.activeWorkspaceTab === "plan";
       const isPipeline = state.workspaceUi.activeWorkspaceTab === "pipeline";
       const isTree = state.workspaceUi.activeWorkspaceTab === "tree";
+      const isDefaultRecipes = state.workspaceUi.activeWorkspaceTab === "default-recipes";
       if (workspaceTabPlan) {
         workspaceTabPlan.classList?.toggle("is-active", isPlan);
         workspaceTabPlan.setAttribute("aria-selected", String(isPlan));
@@ -3974,6 +4241,10 @@
         workspaceTabTree.classList?.toggle("is-active", isTree);
         workspaceTabTree.setAttribute("aria-selected", String(isTree));
       }
+      if (workspaceTabDefaultRecipes) {
+        workspaceTabDefaultRecipes.classList?.toggle("is-active", isDefaultRecipes);
+        workspaceTabDefaultRecipes.setAttribute("aria-selected", String(isDefaultRecipes));
+      }
       if (planWorkspacePanel) {
         planWorkspacePanel.hidden = !isPlan;
       }
@@ -3982,6 +4253,9 @@
       }
       if (treeWorkspacePanel) {
         treeWorkspacePanel.hidden = !isTree;
+      }
+      if (defaultRecipeWorkspacePanel) {
+        defaultRecipeWorkspacePanel.hidden = !isDefaultRecipes;
       }
 
       if (datasetDrawer) {
@@ -4009,6 +4283,7 @@
       renderCatalogTree();
       renderSelectedItemCard();
       renderManagedDefaultRecipePresets();
+      renderManagedDefaultRecipeWorkspace();
       renderSearchResults();
       renderSummary();
       renderTree();
@@ -4177,7 +4452,15 @@
       syncManagedDefaultPresetState();
       state.activeManagedDefaultRecipeChooserRootKey = null;
       state.activeManagedDefaultRecipeChooserTypeID = null;
-      renderManagedDefaultRecipePresets();
+      state.recipeSelections = mergeRecipeSelectionsWithManagedDefaults(
+        state.recipeSelections,
+        mergeManagedDefaultRecipeSelections(state.managedDefaultRecipePresets),
+        state.managedDefaultRecipePresets,
+      );
+      if (state.graph && state.selectedTypeID) {
+        recomputeCalculation(false);
+      }
+      renderAll();
     }
 
     function handleTreeClick(event) {
@@ -4292,6 +4575,31 @@
         select.dataset.defaultPresetRootKey || "",
         Number(select.dataset.defaultPresetRecipeTypeId),
         select.value,
+      );
+    }
+
+    function handleManagedDefaultWorkspaceClick(event) {
+      const target = getEventTargetElement(event);
+      const rootSelectButton = target?.closest("[data-managed-default-workspace-root-select-key]");
+      if (!rootSelectButton) {
+        return;
+      }
+
+      state.managedDefaultActivePresetRootKey = rootSelectButton.dataset.managedDefaultWorkspaceRootSelectKey || "";
+      renderManagedDefaultRecipeWorkspace();
+    }
+
+    function handleManagedDefaultWorkspaceChange(event) {
+      const target = getEventTargetElement(event);
+      const input = target?.closest("[data-managed-default-workspace-option-type-id]");
+      if (!input) {
+        return;
+      }
+
+      handleManagedDefaultRecipeSelection(
+        input.dataset.managedDefaultWorkspaceOptionRootKey || "",
+        Number(input.dataset.managedDefaultWorkspaceOptionTypeId),
+        input.value,
       );
     }
 
@@ -4519,8 +4827,11 @@
     workspaceTabPlan?.addEventListener("click", handleWorkspaceTabChange);
     workspaceTabPipeline?.addEventListener("click", handleWorkspaceTabChange);
     workspaceTabTree?.addEventListener("click", handleWorkspaceTabChange);
+    workspaceTabDefaultRecipes?.addEventListener("click", handleWorkspaceTabChange);
     treePreview?.addEventListener("click", handleTreeClick);
     treePreview?.addEventListener("change", handleOutlineRecipeChange);
+    defaultRecipeWorkspaceContent?.addEventListener("click", handleManagedDefaultWorkspaceClick);
+    defaultRecipeWorkspaceContent?.addEventListener("change", handleManagedDefaultWorkspaceChange);
     viewDrawer?.addEventListener("click", handleTreeClick);
     datasetDrawer?.addEventListener("click", handleOverlayClose);
     filtersDrawer?.addEventListener("click", handleOverlayClose);
@@ -4596,8 +4907,10 @@
     summarizeWorkspaceHeader,
     buildPlannerLineViewModels,
     focusPlannerDecisionFromOutput,
+    filterManagedDefaultRecipePresetsForSelection,
     renderPlannerAggregatedOutputMarkup,
     renderPlannerLinesMarkup,
+    renderManagedDefaultRecipeWorkspaceMarkup,
     updateProgressInputValue,
     createPlannerRuntime,
   };
