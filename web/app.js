@@ -420,12 +420,13 @@
     }
   }
 
-  function buildManagedDefaultPresetCardMarkup(preset, graph, options = {}) {
+  function buildManagedDefaultSelectionCardMarkup(preset, graph, options = {}) {
     if (!preset) {
       return "";
     }
 
     const isActive = Boolean(options.isActive);
+    const rootSelectDataAttribute = String(options.rootSelectDataAttribute || "data-managed-default-root-select-key");
     const rootPrefixTag = getRecipeFacilityPrefixTag(graph, preset.rootRecipe) || "[Base]";
     const currentPathLabel = preset.isCustomized ? "Custom path" : "Default path";
     const currentStateValue = preset.isCustomized ? "overridden" : "default";
@@ -433,22 +434,22 @@
 
     return `
       <section
-        class="managed-default-root-card planner-decision-group${isActive ? " is-active" : ""}"
+        class="managed-default-selection-card planner-decision-group${isActive ? " is-active" : ""}"
         data-managed-default-root-key="${preset.key}"
       >
         <button
           type="button"
-          class="managed-default-root-select"
-          data-managed-default-root-select-key="${preset.key}"
+          class="managed-default-selection-select"
+          ${rootSelectDataAttribute}="${preset.key}"
           aria-pressed="${String(isActive)}"
         >
-          <div class="managed-default-card-head planner-decision-group-head">
-            <div class="planner-decision-head-main managed-default-root-select-main">
-              <div class="managed-default-workspace-label">${renderItemMarkup(preset.name, preset.typeID)}</div>
+          <div class="planner-decision-group-head managed-default-selection-head">
+            <div class="planner-decision-head-main managed-default-selection-main">
+              <div class="planner-decision-type-label">${renderItemMarkup(preset.name, preset.typeID)}</div>
               <div class="planner-decision-type-meta">Type ${formatNumber(preset.typeID)}</div>
               <div class="planner-decision-count">${formatNumber(recipeOptionCount)} recipe option${recipeOptionCount === 1 ? "" : "s"}</div>
             </div>
-            <div class="managed-default-summary-side">
+            <div class="managed-default-selection-side">
               <span class="planner-decision-state-pill" data-state="${currentStateValue}">
                 ${escapeHtml(currentStateValue)}
               </span>
@@ -461,6 +462,13 @@
         </div>
       </section>
     `;
+  }
+
+  function buildManagedDefaultPresetCardMarkup(preset, graph, options = {}) {
+    return buildManagedDefaultSelectionCardMarkup(preset, graph, {
+      ...options,
+      rootSelectDataAttribute: options.rootSelectDataAttribute || "data-managed-default-root-select-key",
+    });
   }
 
   function buildManagedDefaultDetailMarkup(preset, graph, options = {}) {
@@ -478,15 +486,28 @@
       `;
     }
 
-    const rootPrefixTag = getRecipeFacilityPrefixTag(graph, preset.rootRecipe) || "[Base]";
     const currentStateValue = preset.isCustomized ? "overridden" : "default";
     const stateLabel = currentStateValue;
     const currentBlueprintId = Number(preset?.rootRecipe?.blueprintID);
-    const recipeOptions = getAvailableRecipesForType(graph, preset.typeID);
+    const recipeOptions = getAvailableRecipesForType(graph, preset.typeID).map((recipe) => {
+      const selectedOutput = getRecipeOutputForType(recipe, preset.typeID);
+      const keyInputHint = recipe?.inputs?.[0]
+        ? `${getItem(graph, recipe.inputs[0].typeID)?.name ?? `Type ${recipe.inputs[0].typeID}`} x${formatNumber(
+            recipe.inputs[0].quantity,
+          )}`
+        : null;
+
+      return {
+        blueprintId: Number(recipe.blueprintID),
+        outputQuantity: Math.max(1, Number(selectedOutput?.quantity) || 1),
+        runtime: Number(recipe.runTime) || 0,
+        keyInputHint,
+      };
+    });
     const interactionId = String(options.interactionId || "managed-default-detail");
     const optionTypeDataAttribute = String(options.optionTypeDataAttribute || "data-managed-default-workspace-option-type-id");
     const optionRootDataAttribute = String(options.optionRootDataAttribute || "data-managed-default-workspace-option-root-key");
-    const scopeNote = options.scopeNote || "This choice applies whenever this material appears in the active recipe path.";
+    const scopeNote = options.scopeNote || "This choice applies to all occurrences of this item in the current plan.";
     const stateDetailLabel = options.stateDetailLabel || stateLabel;
 
     return `
@@ -505,14 +526,8 @@
           </span>
         </div>
         <div class="planner-decision-meta">
-          <span class="summary-key">State</span>
+          <span class="summary-key">STATE</span>
           <strong class="planner-decision-state" data-state="${currentStateValue}">${escapeHtml(stateDetailLabel)}</strong>
-        </div>
-        <div class="managed-default-detail-path">
-          <span class="managed-default-path-chip is-selected">${escapeHtml(rootPrefixTag)} path</span>
-          <span class="managed-default-path-chip${preset.isCustomized ? " is-custom" : ""}">${escapeHtml(
-            preset.isCustomized ? "Custom path" : "Default path",
-          )}</span>
         </div>
         <p class="planner-decision-scope-note">${escapeHtml(scopeNote)}</p>
         <div class="planner-decision-options">
@@ -538,7 +553,7 @@
       interactionId: "managed-default-drawer",
       optionTypeDataAttribute: "data-managed-default-drawer-option-type-id",
       optionRootDataAttribute: "data-managed-default-drawer-option-root-key",
-      scopeNote: options.scopeNote || "This choice updates the global default recipe path for every future calculator target.",
+      scopeNote: options.scopeNote || "This choice applies to all occurrences of this item in the current plan.",
       stateDetailLabel: options.stateDetailLabel || (preset?.isCustomized ? "overridden" : "default"),
       emptyMessage: options.emptyMessage || "Choose a material on the left to edit its global default recipe path.",
     });
@@ -583,11 +598,12 @@
     `;
 
     const railMarkup = `
-        <section class="default-recipe-rail">
+        <section class="default-recipe-list">
         ${presets
           .map((preset) =>
-            buildManagedDefaultPresetCardMarkup(preset, graph, {
+            buildManagedDefaultSelectionCardMarkup(preset, graph, {
               isActive: preset.key === activeRootKey,
+              rootSelectDataAttribute: "data-managed-default-root-select-key",
             }),
           )
           .join("")}
@@ -1239,13 +1255,14 @@
   }
 
   function buildPlannerDecisionOptionMetadata(option = {}, typeId, graph = null) {
-    const blueprintId = Number(option?.blueprintId);
+    const blueprintId = Number(option?.blueprintId ?? option?.blueprintID);
     const recipe = Number.isFinite(blueprintId) ? getRecipe(graph, blueprintId) : null;
-    const selectedOutput = recipe ? getRecipeOutputForType(recipe, typeId) : null;
+    const optionRecipe = recipe || option;
+    const selectedOutput = getRecipeOutputForType(optionRecipe, typeId);
     const outputQuantity = Math.max(1, Number(option?.outputQuantity ?? selectedOutput?.quantity) || 1);
-    const runtime = Number(option?.runtime ?? option?.runTime ?? recipe?.runTime) || 0;
-    const graphInputHint = recipe?.inputs?.[0]
-      ? `${getItem(graph, recipe.inputs[0].typeID)?.name ?? `Type ${recipe.inputs[0].typeID}`} x${formatNumber(recipe.inputs[0].quantity)}`
+    const runtime = Number(option?.runtime ?? option?.runTime ?? optionRecipe?.runTime) || 0;
+    const graphInputHint = optionRecipe?.inputs?.[0]
+      ? `${getItem(graph, optionRecipe.inputs[0].typeID)?.name ?? `Type ${optionRecipe.inputs[0].typeID}`} x${formatNumber(optionRecipe.inputs[0].quantity)}`
       : null;
 
     return {
@@ -1380,48 +1397,12 @@
     return `${summaryMarkup}<div class="planner-decision-groups">${groupsMarkup}</div>`;
   }
 
-  function buildManagedDefaultWorkspacePresetCardMarkup(preset, graph, options = {}) {
-    if (!preset) {
-      return "";
-    }
-
-    const isActive = Boolean(options.isActive);
-    const rootPrefixTag = getRecipeFacilityPrefixTag(graph, preset.rootRecipe) || "[Base]";
-    const stateLabel = preset.isCustomized ? "Custom path" : "Default path";
-    const stateValue = preset.isCustomized ? "overridden" : "default";
-    const recipeOptionCount = getAvailableRecipesForType(graph, preset.typeID).length;
-
-    return `
-      <section class="managed-default-workspace-card planner-decision-group${isActive ? " is-active" : ""}">
-        <button
-          type="button"
-          class="managed-default-workspace-select"
-          data-managed-default-workspace-root-select-key="${preset.key}"
-          aria-pressed="${String(isActive)}"
-        >
-          <span class="managed-default-workspace-main">
-            <span class="managed-default-workspace-copy planner-decision-head-main">
-              <span class="managed-default-workspace-label">${renderItemMarkup(preset.name, preset.typeID)}</span>
-              <span class="planner-decision-type-meta">Type ${formatNumber(preset.typeID)}</span>
-              <span class="planner-decision-count">${formatNumber(recipeOptionCount)} recipe option${recipeOptionCount === 1 ? "" : "s"}</span>
-            </span>
-            <span class="planner-decision-state-pill" data-state="${stateValue}">${escapeHtml(stateValue)}</span>
-          </span>
-        </button>
-        <div class="managed-default-path-row">
-          <span class="managed-default-path-chip is-selected">${escapeHtml(rootPrefixTag)} path</span>
-          <span class="managed-default-path-chip${preset.isCustomized ? " is-custom" : ""}">${escapeHtml(stateLabel)}</span>
-        </div>
-      </section>
-    `;
-  }
-
   function buildManagedDefaultWorkspaceDetailMarkup(preset, graph) {
     return buildManagedDefaultDetailMarkup(preset, graph, {
       interactionId: "managed-default-workspace",
       optionTypeDataAttribute: "data-managed-default-workspace-option-type-id",
       optionRootDataAttribute: "data-managed-default-workspace-option-root-key",
-      scopeNote: "This choice applies to all occurrences of this item in the current filtered recipe path.",
+      scopeNote: "This choice applies to all occurrences of this item in the current plan.",
       stateDetailLabel: preset?.isCustomized ? "overridden" : "default",
       emptyMessage: "Choose a material on the left to edit its default recipe path.",
     });
@@ -1455,7 +1436,7 @@
     const customizedCount = visiblePresets.filter((preset) => preset.isCustomized).length;
 
     return `
-      <div class="default-recipe-workspace-shell">
+      <div class="default-recipe-shell default-recipe-workspace-shell">
         <section class="planner-decision-summary default-recipe-summary">
           <div class="planner-decision-summary-card">
             <span class="summary-key">Visible managed</span>
@@ -1470,17 +1451,20 @@
             <strong class="planner-decision-summary-value">${formatNumber(visiblePresets.length - customizedCount)}</strong>
           </div>
         </section>
-        <div class="default-recipe-workspace-layout">
-          <section class="default-recipe-workspace-list">
+        <div class="default-recipe-layout default-recipe-workspace-layout">
+          <section class="default-recipe-list default-recipe-workspace-list">
             ${visiblePresets
               .map((preset) =>
-                buildManagedDefaultWorkspacePresetCardMarkup(preset, graph, {
+                buildManagedDefaultSelectionCardMarkup(preset, graph, {
                   isActive: preset.key === activeRootKey,
+                  rootSelectDataAttribute: "data-managed-default-workspace-root-select-key",
                 }),
               )
               .join("")}
           </section>
-          ${buildManagedDefaultWorkspaceDetailMarkup(activePreset, graph)}
+          <section class="default-recipe-detail">
+            ${buildManagedDefaultWorkspaceDetailMarkup(activePreset, graph)}
+          </section>
         </div>
       </div>
     `;
@@ -3427,7 +3411,6 @@
     const quantityInput = document.getElementById("quantityInput");
     const summaryRecipeField = document.getElementById("summaryRecipeField");
     const summaryRecipeSelect = document.getElementById("summaryRecipeSelect");
-    const defaultRecipePresetsMeta = document.getElementById("defaultRecipePresetsMeta");
     const defaultRecipePresetsList = document.getElementById("defaultRecipePresetsList");
     const nextActionsContent = document.getElementById("nextActionsContent");
     const bottleneckContent = document.getElementById("bottleneckContent");
@@ -3854,12 +3837,11 @@
     }
 
     function renderManagedDefaultRecipePresets() {
-      if (!defaultRecipePresetsList || !defaultRecipePresetsMeta) {
+      if (!defaultRecipePresetsList) {
         return;
       }
 
       if (!state.graph) {
-        defaultRecipePresetsMeta.textContent = "No dataset";
         defaultRecipePresetsList.innerHTML = `
           <p class="result-empty">Load data to configure global recipe defaults.</p>
         `;
@@ -3867,14 +3849,12 @@
       }
 
       if (!state.managedDefaultRecipePresets.length) {
-        defaultRecipePresetsMeta.textContent = "Unavailable";
         defaultRecipePresetsList.innerHTML = `
           <p class="result-empty">This dataset does not expose any managed default recipe paths.</p>
         `;
         return;
       }
 
-      defaultRecipePresetsMeta.textContent = `${formatNumber(state.managedDefaultRecipePresets.length)} managed`;
       defaultRecipePresetsList.innerHTML = renderManagedDefaultRecipePathsMarkup(
         state.graph,
         state.managedDefaultRecipePresets,

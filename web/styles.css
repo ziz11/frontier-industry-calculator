@@ -908,12 +908,13 @@ h3 {
 
 .planner-decision-head-main {
   display: grid;
-  gap: 5px;
+  gap: 6px;
   min-width: 0;
 }
 
 .planner-decision-type-label {
   font-weight: 700;
+  font-size: 0.95rem;
   color: var(--ink);
 }
 
@@ -927,7 +928,7 @@ h3 {
 .planner-decision-option-meta,
 .planner-decision-option-hint {
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   line-height: 1.35;
 }
 
@@ -946,6 +947,11 @@ h3 {
   border: 1px solid rgba(210, 153, 69, 0.24);
   background: rgba(210, 153, 69, 0.08);
   color: #f1d3a2;
+}
+
+.planner-decision-state {
+  font-size: 1.02rem;
+  line-height: 1.25;
 }
 
 .planner-decision-state-pill[data-state="overridden"],
@@ -984,12 +990,13 @@ h3 {
 
 .planner-decision-option-main {
   display: grid;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
 }
 
 .planner-decision-option-title {
   font-weight: 700;
+  font-size: 0.93rem;
   color: var(--ink);
   line-height: 1.35;
 }
@@ -1238,7 +1245,7 @@ input[type="file"] {
 
 .default-recipe-layout {
   display: grid;
-  grid-template-columns: minmax(280px, 0.95fr) minmax(0, 1.7fr);
+  grid-template-columns: minmax(250px, 0.78fr) minmax(0, 1.82fr);
   gap: 14px;
   align-items: start;
 }
@@ -1249,30 +1256,27 @@ input[type="file"] {
 }
 
 .default-recipe-workspace-layout {
-  display: grid;
-  grid-template-columns: minmax(300px, 0.92fr) minmax(0, 1.6fr);
-  gap: 14px;
-  align-items: start;
+  grid-template-columns: minmax(250px, 0.78fr) minmax(0, 1.82fr);
 }
 
-.default-recipe-workspace-list {
+.default-recipe-list,
+.default-recipe-workspace-list,
+.default-recipe-rail {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   align-content: start;
 }
 
-.managed-default-workspace-card,
-.managed-default-root-card {
+.managed-default-selection-card {
   padding: 0;
   gap: 0;
   overflow: hidden;
 }
 
-.managed-default-workspace-select,
-.managed-default-root-select {
+.managed-default-selection-select {
   width: 100%;
   border: 0;
-  padding: 14px;
+  padding: 12px 12px 10px;
   background: transparent;
   color: var(--ink);
   text-align: left;
@@ -1281,38 +1285,14 @@ input[type="file"] {
   font: inherit;
 }
 
-.managed-default-workspace-select:focus-visible,
-.managed-default-root-select:focus-visible {
+.managed-default-selection-select:focus-visible {
   outline: 2px solid rgba(210, 153, 69, 0.38);
   outline-offset: 2px;
-}
-
-.managed-default-workspace-main {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.managed-default-workspace-copy {
-  min-width: 0;
-  display: grid;
-  gap: 6px;
-}
-
-.managed-default-workspace-label .item-inline {
-  max-width: 100%;
 }
 
 .managed-default-workspace-detail,
 .managed-default-unified-detail {
   min-width: 0;
-}
-
-.default-recipe-rail {
-  display: grid;
-  gap: 10px;
-  align-content: start;
 }
 
 .default-recipe-detail {
@@ -1329,9 +1309,8 @@ input[type="file"] {
   line-height: 1.45;
 }
 
-.managed-default-root-card,
+.managed-default-selection-card,
 .managed-default-detail-panel,
-.managed-default-workspace-card,
 .managed-default-workspace-detail {
   border: 1px solid rgba(132, 145, 128, 0.14);
   border-radius: 12px;
@@ -1341,21 +1320,21 @@ input[type="file"] {
   overflow: hidden;
 }
 
-.managed-default-root-card.planner-decision-group,
-.managed-default-workspace-card.planner-decision-group {
+.managed-default-selection-card.planner-decision-group {
   padding: 0;
   gap: 0;
 }
 
-.managed-default-root-card.is-active,
+.managed-default-selection-card.is-active,
 .managed-default-detail-panel.is-open,
-.managed-default-workspace-card.is-active,
 .managed-default-workspace-detail.is-active {
   border-color: rgba(210, 153, 69, 0.28);
-  box-shadow: inset 0 0 0 1px rgba(210, 153, 69, 0.12);
+  box-shadow:
+    inset 0 0 0 1px rgba(210, 153, 69, 0.2),
+    inset 0 0 0 999px rgba(210, 153, 69, 0.03);
 }
 
-.managed-default-card-head {
+.managed-default-selection-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -1363,17 +1342,17 @@ input[type="file"] {
   padding: 0;
 }
 
-.managed-default-root-select-main {
+.managed-default-selection-main {
   min-width: 0;
   display: grid;
   gap: 6px;
 }
 
-.managed-default-root-select .item-inline {
+.managed-default-selection-select .item-inline {
   max-width: 100%;
 }
 
-.managed-default-summary-side {
+.managed-default-selection-side {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -1392,7 +1371,7 @@ input[type="file"] {
 .managed-default-detail-panel {
   padding: 14px;
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 
 .managed-default-detail-panel .planner-decision-type-label .item-inline {
@@ -1437,8 +1416,7 @@ input[type="file"] {
 }
 
 .managed-default-unified-detail .planner-decision-state-pill,
-.managed-default-workspace-card .planner-decision-state-pill,
-.managed-default-root-card .planner-decision-state-pill {
+.managed-default-selection-card .planner-decision-state-pill {
   text-transform: uppercase;
 }
 
@@ -2264,11 +2242,7 @@ code {
     padding: 8px;
   }
 
-  .managed-default-summary {
-    grid-template-columns: 1fr;
-  }
-
-  .managed-default-summary-side {
+  .managed-default-selection-side {
     justify-content: space-between;
   }
 
