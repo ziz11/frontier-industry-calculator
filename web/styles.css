@@ -51,6 +51,10 @@ body::before {
   mask-image: radial-gradient(circle at center, black, transparent 85%);
 }
 
+body.has-open-overlay {
+  overflow: hidden;
+}
+
 .page-shell {
   max-width: 1700px;
   margin: 0 auto;
@@ -217,6 +221,11 @@ h3 {
   gap: 16px;
 }
 
+.target-dock {
+  position: sticky;
+  top: 12px;
+}
+
 .workspace-panel {
   background: linear-gradient(180deg, rgba(23, 27, 24, 0.98), rgba(13, 16, 15, 0.98));
   border: 1px solid rgba(132, 145, 128, 0.12);
@@ -238,6 +247,13 @@ h3 {
   border-radius: 14px;
   background: rgba(10, 12, 11, 0.72);
   justify-self: start;
+  position: sticky;
+  top: 12px;
+  z-index: 10;
+  max-width: 100%;
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  scrollbar-width: thin;
 }
 
 .workspace-tab {
@@ -250,6 +266,13 @@ h3 {
   font: 700 12px/1.35 var(--mono);
   letter-spacing: 0.1em;
   text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.workspace-tab:focus-visible,
+.mini-button:focus-visible {
+  outline: 2px solid #f0bd70;
+  outline-offset: 2px;
 }
 
 .workspace-tab.is-active,
@@ -2153,6 +2176,7 @@ code {
 
 @media (max-width: 1280px) {
   .top-bar {
+    display: grid;
     grid-template-columns: 1fr;
   }
 
@@ -2183,6 +2207,11 @@ code {
   .workspace-shell,
   .pipeline-grid {
     grid-template-columns: 1fr;
+  }
+
+  .target-dock,
+  .workspace-tabs {
+    position: static;
   }
 
   .top-bar-actions {

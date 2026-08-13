@@ -3471,6 +3471,9 @@
     const plannerDecisions = document.getElementById("plannerDecisions");
     const plannerAddLine = document.getElementById("plannerAddLine");
     const storage = getBrowserStorage();
+    const workspaceTabs = [workspaceTabPlan, workspaceTabPipeline, workspaceTabTree, workspaceTabDefaultRecipes].filter(Boolean);
+    let activeOverlay = null;
+    let overlayTrigger = null;
 
     const state = {
       graph: null,
@@ -4190,18 +4193,22 @@
       if (workspaceTabPlan) {
         workspaceTabPlan.classList?.toggle("is-active", isPlan);
         workspaceTabPlan.setAttribute("aria-selected", String(isPlan));
+        workspaceTabPlan.tabIndex = isPlan ? 0 : -1;
       }
       if (workspaceTabPipeline) {
         workspaceTabPipeline.classList?.toggle("is-active", isPipeline);
         workspaceTabPipeline.setAttribute("aria-selected", String(isPipeline));
+        workspaceTabPipeline.tabIndex = isPipeline ? 0 : -1;
       }
       if (workspaceTabTree) {
         workspaceTabTree.classList?.toggle("is-active", isTree);
         workspaceTabTree.setAttribute("aria-selected", String(isTree));
+        workspaceTabTree.tabIndex = isTree ? 0 : -1;
       }
       if (workspaceTabDefaultRecipes) {
         workspaceTabDefaultRecipes.classList?.toggle("is-active", isDefaultRecipes);
         workspaceTabDefaultRecipes.setAttribute("aria-selected", String(isDefaultRecipes));
+        workspaceTabDefaultRecipes.tabIndex = isDefaultRecipes ? 0 : -1;
       }
       if (planWorkspacePanel) {
         planWorkspacePanel.hidden = !isPlan;
@@ -4230,6 +4237,20 @@
       }
       if (dataUploadModal) {
         dataUploadModal.hidden = !state.workspaceUi.isUploadModalOpen;
+      }
+      const nextOverlay = state.workspaceUi.isUploadModalOpen
+        ? dataUploadModal
+        : [datasetDrawer, filtersDrawer, defaultRecipePathsDrawer, viewDrawer].find((overlay) => overlay && !overlay.hidden) || null;
+      if (nextOverlay !== activeOverlay) {
+        if (nextOverlay) {
+          nextOverlay.querySelector(".overlay-panel")?.focus();
+          document.body.classList.add("has-open-overlay");
+        } else {
+          document.body.classList.remove("has-open-overlay");
+          overlayTrigger?.focus?.();
+          overlayTrigger = null;
+        }
+        activeOverlay = nextOverlay;
       }
     }
 
@@ -4609,7 +4630,23 @@
       renderPipelineWorkspace();
     }
 
+    function handleWorkspaceTabKeydown(event) {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+        return;
+      }
+      event.preventDefault();
+      const currentIndex = workspaceTabs.indexOf(event.currentTarget);
+      const nextIndex = event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? workspaceTabs.length - 1
+          : (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + workspaceTabs.length) % workspaceTabs.length;
+      workspaceTabs[nextIndex]?.click();
+      workspaceTabs[nextIndex]?.focus();
+    }
+
     function toggleDrawer(drawer) {
+      overlayTrigger = document.activeElement;
       state.workspaceUi = reduceCalculatorWorkspaceState(state.workspaceUi, {
         type: "toggle-drawer",
         drawer,
@@ -4631,10 +4668,34 @@
     }
 
     function handleUploadModalToggle() {
+      overlayTrigger = document.activeElement;
       state.workspaceUi = reduceCalculatorWorkspaceState(state.workspaceUi, {
         type: "toggle-upload-modal",
       });
       renderWorkspaceChrome();
+    }
+
+
+    function handleGlobalKeydown(event) {
+      if (event.key === "Escape" && activeOverlay) {
+        state.workspaceUi = reduceCalculatorWorkspaceState(state.workspaceUi, { type: "close-overlays" });
+        renderWorkspaceChrome();
+        return;
+      }
+      if (event.key !== "Tab" || !activeOverlay) {
+        return;
+      }
+      const focusable = Array.from(activeOverlay.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     }
 
     function handlePlanListToggle(event) {
@@ -4756,6 +4817,8 @@
     workspaceTabPipeline?.addEventListener("click", handleWorkspaceTabChange);
     workspaceTabTree?.addEventListener("click", handleWorkspaceTabChange);
     workspaceTabDefaultRecipes?.addEventListener("click", handleWorkspaceTabChange);
+    workspaceTabs.forEach((tab) => tab.addEventListener("keydown", handleWorkspaceTabKeydown));
+    document.addEventListener?.("keydown", handleGlobalKeydown);
     treePreview?.addEventListener("click", handleTreeClick);
     treePreview?.addEventListener("change", handleOutlineRecipeChange);
     defaultRecipeWorkspaceContent?.addEventListener("click", handleManagedDefaultWorkspaceClick);
