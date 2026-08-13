@@ -86,13 +86,13 @@
 
         <section class="workspace-main">
           <div class="workspace-tabs" role="tablist" aria-label="Workspace tabs">
-            <button id="workspaceTabPlan" type="button" class="workspace-tab is-active" data-workspace-tab="plan" role="tab" aria-selected="true">Plan</button>
-            <button id="workspaceTabPipeline" type="button" class="workspace-tab" data-workspace-tab="pipeline" role="tab" aria-selected="false">Pipeline</button>
-            <button id="workspaceTabTree" type="button" class="workspace-tab" data-workspace-tab="tree" role="tab" aria-selected="false">Tree</button>
-            <button id="workspaceTabDefaultRecipes" type="button" class="workspace-tab" data-workspace-tab="default-recipes" role="tab" aria-selected="false">Default Recipe Paths</button>
+            <button id="workspaceTabPlan" type="button" class="workspace-tab is-active" data-workspace-tab="plan" role="tab" aria-selected="true" aria-controls="planWorkspacePanel">Plan</button>
+            <button id="workspaceTabPipeline" type="button" class="workspace-tab" data-workspace-tab="pipeline" role="tab" aria-selected="false" aria-controls="pipelineWorkspacePanel" tabindex="-1">Pipeline</button>
+            <button id="workspaceTabTree" type="button" class="workspace-tab" data-workspace-tab="tree" role="tab" aria-selected="false" aria-controls="treeWorkspacePanel" tabindex="-1">Tree</button>
+            <button id="workspaceTabDefaultRecipes" type="button" class="workspace-tab" data-workspace-tab="default-recipes" role="tab" aria-selected="false" aria-controls="defaultRecipeWorkspacePanel" tabindex="-1">Default Recipe Paths</button>
           </div>
 
-          <section id="planWorkspacePanel" class="workspace-tab-panel" role="tabpanel">
+          <section id="planWorkspacePanel" class="workspace-tab-panel" role="tabpanel" aria-labelledby="workspaceTabPlan">
             <section id="materialsSection" class="workspace-panel">
               <div class="section-head">
                 <h2>Materials</h2>
@@ -134,7 +134,7 @@
             </section>
           </section>
 
-          <section id="pipelineWorkspacePanel" class="workspace-tab-panel" role="tabpanel" hidden>
+          <section id="pipelineWorkspacePanel" class="workspace-tab-panel" role="tabpanel" aria-labelledby="workspaceTabPipeline" hidden>
             <section id="dependencyPipeline" class="workspace-panel">
               <div class="section-head">
                 <h2>Production Pipeline</h2>
@@ -147,7 +147,7 @@
 
           </section>
 
-          <section id="treeWorkspacePanel" class="workspace-tab-panel" role="tabpanel" hidden>
+          <section id="treeWorkspacePanel" class="workspace-tab-panel" role="tabpanel" aria-labelledby="workspaceTabTree" hidden>
             <section class="workspace-panel">
               <div class="section-head">
                 <h2>Advanced Tree</h2>
@@ -159,7 +159,7 @@
             </section>
           </section>
 
-          <section id="defaultRecipeWorkspacePanel" class="workspace-tab-panel" role="tabpanel" hidden>
+          <section id="defaultRecipeWorkspacePanel" class="workspace-tab-panel" role="tabpanel" aria-labelledby="workspaceTabDefaultRecipes" hidden>
             <section class="workspace-panel">
               <div class="section-head">
                 <h2>Default Recipe Paths</h2>
@@ -175,11 +175,11 @@
 
       <div id="datasetDrawer" class="overlay-shell drawer-shell" hidden>
         <div class="overlay-backdrop" data-close-overlay="drawer"></div>
-        <aside class="overlay-panel drawer-panel">
+        <aside class="overlay-panel drawer-panel" role="dialog" aria-modal="true" aria-labelledby="datasetDrawerTitle" tabindex="-1">
           <div class="overlay-head">
             <div>
               <p class="eyebrow">Secondary Layer</p>
-              <h2>Dataset</h2>
+              <h2 id="datasetDrawerTitle">Dataset</h2>
             </div>
             <button type="button" class="mini-button" data-close-overlay="drawer">Close</button>
           </div>
@@ -207,11 +207,11 @@
 
       <div id="filtersDrawer" class="overlay-shell drawer-shell" hidden>
         <div class="overlay-backdrop" data-close-overlay="drawer"></div>
-        <aside class="overlay-panel drawer-panel">
+        <aside class="overlay-panel drawer-panel" role="dialog" aria-modal="true" aria-labelledby="filtersDrawerTitle" tabindex="-1">
           <div class="overlay-head">
             <div>
               <p class="eyebrow">Secondary Layer</p>
-              <h2>Filters</h2>
+              <h2 id="filtersDrawerTitle">Filters</h2>
             </div>
             <button type="button" class="mini-button" data-close-overlay="drawer">Close</button>
           </div>
@@ -232,11 +232,11 @@
 
       <div id="defaultRecipePathsDrawer" class="overlay-shell drawer-shell" hidden>
         <div class="overlay-backdrop" data-close-overlay="drawer"></div>
-        <aside class="overlay-panel drawer-panel default-recipe-drawer-panel">
+        <aside class="overlay-panel drawer-panel default-recipe-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="recipesDrawerTitle" tabindex="-1">
           <div class="overlay-head">
             <div>
               <p class="eyebrow">Secondary Layer</p>
-              <h2>Default Recipe Paths</h2>
+              <h2 id="recipesDrawerTitle">Default Recipe Paths</h2>
             </div>
             <button type="button" class="mini-button" data-close-overlay="drawer">Close</button>
           </div>
@@ -257,11 +257,11 @@
 
       <div id="viewDrawer" class="overlay-shell drawer-shell" hidden>
         <div class="overlay-backdrop" data-close-overlay="drawer"></div>
-        <aside class="overlay-panel drawer-panel">
+        <aside class="overlay-panel drawer-panel" role="dialog" aria-modal="true" aria-labelledby="viewDrawerTitle" tabindex="-1">
           <div class="overlay-head">
             <div>
               <p class="eyebrow">Secondary Layer</p>
-              <h2>View Settings</h2>
+              <h2 id="viewDrawerTitle">View Settings</h2>
             </div>
             <button type="button" class="mini-button" data-close-overlay="drawer">Close</button>
           </div>
@@ -300,11 +300,11 @@
 
       <div id="dataUploadModal" class="overlay-shell modal-shell" hidden>
         <div class="overlay-backdrop" data-close-overlay="modal"></div>
-        <section class="overlay-panel modal-panel">
+        <section class="overlay-panel modal-panel" role="dialog" aria-modal="true" aria-labelledby="uploadModalTitle" tabindex="-1">
           <div class="overlay-head">
             <div>
               <p class="eyebrow">Top Action</p>
-              <h2>Load Dataset</h2>
+              <h2 id="uploadModalTitle">Load Dataset</h2>
             </div>
             <button type="button" class="mini-button" data-close-overlay="modal">Close</button>
           </div>
